@@ -230,16 +230,17 @@ Upgrade cost: **5M / 50M / 500M** at Stages 2 / 3 / 4.
 |---|---|---|---|
 | Festival | A city wants a good at **1.5×** listed. Goods scale with city size: small towns celebrate with food and drink (Grain, Fish, Salt, Wine), large cities with luxuries (Furniture, Jewelry, Glass). | 1 month | announced |
 | Delivery contract | Optional fixed-price order (see 6D) | until deadline | announced |
-| Hard winter | Fjords freeze one month earlier and thaw one month later | one winter | announced |
-| Crop failure | One **NPC** city's Grain or Fish price ×1.6; that city's growth −1% | 3–4 months | announced |
+| Hard winter | Northern region: fjords freeze one month earlier and thaw one month later; affected cities (the player's included) eat **+25% food** during the winter | one winter | announced |
+| Crop failure | One city (the player's included): Grain or Fish price ×1.6 and growth −1%; if it hits the player's city, the player's Grain and Fish lines produce **−50%** | 3–4 months | announced |
 | Gold rush | The Gold city: Gold price ×0.7, population +10%, Tools and Grain become wants | 6 months | sudden |
 | Migration wave | One city's population +5% (can be the player's) | instant | sudden |
 | Price shock | One good ×1.3 or ×0.75 in every city | 2–3 months | sudden |
 | Guild subsidy | Player infrastructure costs −20% | 2 months | sudden (shows duration) |
 
 **6C. No disasters** ✅
-No plagues, fires, mine collapses or similar events. Events never damage the player's cities: crop failures only
-hit NPC cities, and events that touch the player (migration wave, guild subsidy) are positive.
+No plagues, fires, mine collapses or similar events. The only events that can harm the player's cities are
+**crop failures and hard winters**, and both are announced ahead so the player can stock food. All other events
+that touch the player (migration wave, guild subsidy) are positive.
 (Transport risk from 2D — ocean storms, fjord mishaps, freezing, spring mud — stays; it is a rule, not an event.)
 
 **6D. Announcements and contract flow** ✅
