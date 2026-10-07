@@ -86,13 +86,45 @@ Storms, fjord mishaps and frozen fjords affect NPC vehicles exactly like the pla
 - Insurance (8% of cargo value) covers cargo only, never the vehicle.
 - Trip fees are charged per leg on departure.
 - Wagon upgrades: +5 capacity for 100,000 each, max 2 (20 lots).
+- **Land route downsides** (replacing bandits): wagons are slowed by seasonal **spring mud**; the **roads**
+  infrastructure upgrade speeds up wagons instead of reducing bandit risk.
 
 **2E. Exploration removed** ✅
 All cities in the generated world are known from the start.
 
 ### Batch 2b — Real-time model and world generation 🟡
-Pending: time scale, pause/speed controls, how monthly rules convert to real time, NPC offers in real time,
-world size and generation rules, home city location.
+
+**2b-A. Real-time with pause and speed controls** ✅
+Speeds 1×/2×/4×. The game runs unless the player pauses it or presses **Esc**, which opens settings
+(settings menu designed later).
+
+**2b-B. Clock speed** ✅
+At 1×, **1 game day = 10 seconds** (1 month = 5 minutes, 1 year = 1 hour).
+⚠️ Pacing consequence to resolve in Batch 3: at the original growth rates, one stage takes ~33 game months
+(~2.75 hours at 1×).
+
+**2b-C. Continuous settlement** ✅
+Everything settles continuously: production, vehicle movement, price drift and recovery, upkeep, tax, loan
+interest and population growth. Monthly rates in the rules are pro-rated per simulation step.
+- Implementation: fixed simulation step of 1 game hour (~0.42 s at 1×). Money is stored as whole coins;
+  fractional charges accumulate in a remainder and are deducted as whole coins, so no money is ever lost to rounding.
+- Distances are **days of travel**, from the generated map and the vehicle type.
+- **Forecast panel** (required UI): shows current prices, loans, interest, upkeep, taxes and projected income
+  and costs per day and per month, so the player can plan and is never surprised by a cost.
+
+**2b-D. NPC offers in real time** ✅
+Offers arrive in an inbox and expire after ~10 game days. A setting controls **auto-pause on offers**
+(default: on). 🟡 Confirm: default on, or default off with an optional value threshold.
+
+**2b-E. World generation** 🟡
+- ✅ Number of cities is a new-game setting: default 10, range 6–16.
+- ✅ Names are generated from syllables in two or three culture styles (northern, southern, eastern).
+- ✅ Geography drives production and wants (coast → fish, mountains → ore, south → wine/spices, …).
+- ✅ Starts are deliberately unequal between seeds. Home's production options depend on its site; the only
+  guarantee is that home can produce **one food good and one other resource**.
+- 🟡 Home site: always coastal with inland access; whether the coast is a fjord or open ocean varies by seed.
+- 🟡 World-level guarantee that Spices and Gold exist somewhere in every world.
+
 ### Batch 3 — Population, food and growth ⬜
 ### Batch 4 — Money: taxes, loans, net worth ⬜
 ### Batch 5 — Production and tier balance ⬜
