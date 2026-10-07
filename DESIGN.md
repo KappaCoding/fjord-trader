@@ -9,12 +9,15 @@ it isn't decided yet — ask, don't improvise.
 
 - Engine: **Godot 4, Standard version** (no .NET), language **GDScript**.
 - Presentation: **interactive dashboard** (tables, panels, buttons). Map/visual polish is a later phase.
+- **Real-time strategy, not turn-based** (overrides the original ruleset's turn structure). Exact time model is in Batch 2b.
 - Architecture:
-  - `engine/` — pure rules logic, no UI. A turn is `resolve_turn(state, orders) -> new_state + log`.
+  - `engine/` — pure rules logic, no UI. The simulation advances in fixed ticks: `tick(state, commands) -> new_state + log`.
   - `data/` — goods, cities, events and balance numbers as data files, not hard-coded.
   - `ui/` — dashboard scenes; reads state, submits orders, never contains rules.
   - `tests/` — automated tests for the engine math.
 - Randomness: one **seeded RNG** stored in the save, so any save + seed reproduces the same game.
+- **No fixed story content.** The original ruleset was written for a GM-run story game; city names, the world map and
+  starting conditions are generated procedurally from the seed (Batch 2b).
 
 ## Decision log
 
@@ -63,7 +66,33 @@ The game is about **establishing trade routes**, not racing for gaps.
   Route details (price limits, stop conditions, how routes form/dissolve) are decided in Batch 2.
 - One-off manual trips remain available alongside routes.
 
-### Batch 2 — Transport, routes and risk ⬜
+### Batch 2 — Transport, routes and risk ✅
+
+**2A. Player route price limits** ✅
+Every stop on a player route has optional limits: sell only above a minimum price, buy only below a maximum
+price, and a lot cap per visit. Stops whose limits aren't met are skipped and logged.
+
+**2B. NPC route strength** ✅
+NPC routes are capacity-limited: one vehicle per route, 10–30 lots per trip; the number of NPC routes a city runs
+scales with its population. NPC trade narrows price gaps but never erases them.
+
+**2C. NPCs share the player's risks** ✅
+Storms, fjord mishaps and frozen fjords affect NPC vehicles exactly like the player's.
+
+**2D. Transport defaults** ✅
+- **No bandits.** Land routes carry no cargo-loss risk.
+- Fjord mishap: lose 10–30% of cargo, or a delay.
+- Ocean storm: 1 in 3 total loss of vessel and cargo; otherwise 25% cargo lost plus a delay.
+- Insurance (8% of cargo value) covers cargo only, never the vehicle.
+- Trip fees are charged per leg on departure.
+- Wagon upgrades: +5 capacity for 100,000 each, max 2 (20 lots).
+
+**2E. Exploration removed** ✅
+All cities in the generated world are known from the start.
+
+### Batch 2b — Real-time model and world generation 🟡
+Pending: time scale, pause/speed controls, how monthly rules convert to real time, NPC offers in real time,
+world size and generation rules, home city location.
 ### Batch 3 — Population, food and growth ⬜
 ### Batch 4 — Money: taxes, loans, net worth ⬜
 ### Batch 5 — Production and tier balance ⬜
@@ -76,16 +105,7 @@ The game is about **establishing trade routes**, not racing for gaps.
 3. Pacing: ~33 turns per stage at the 5% growth cap, ~99 turns to Metropolis. — Batch 3
 4. Tier 4 balance: Ships keep 75% margin at base prices, Jewelry 11%. — Batch 5
 
-## Starting world (from the initial setup; may be revised)
+## World generation (replaces the fixed starting world)
 
-| City | Route | Distance | Pop | Produces | Wants |
-|---|---|---|---|---|---|
-| Ravnsfjord (home) | — | — | 2,000 | (player's choice of 2 Tier 1) | — |
-| Grimsdal | Land | 1 | 14,000 | Iron Ore, Coal, Stone, Timber | Grain, Salt |
-| Kastelborg | Land | 2 | 38,000 | Grain, Wool, Cloth | Fish, Stone |
-| Saltnes | Fjord | 1 | 9,000 | Salt, Fish, Stone | Timber, Wool |
-| Brekkhavn | Fjord | 2 (frozen months 12–2) | 55,000 | Timber, Fish, Furniture | Grain, Iron Ore |
-| Zafiran | Ocean | 4 | 180,000 | Spices, Cloth, Glass, Salt | Steel, Furniture |
-| Valmora | Ocean | 5 | 90,000 | Gold, Wine, Grain | Tools, Wool |
-
-Ravnsfjord is too far north for Wine.
+The fixed six cities from the initial GM setup are retired. The world, its city names, positions, routes,
+production and wants are generated from the seed. Rules are being decided in Batch 2b.
