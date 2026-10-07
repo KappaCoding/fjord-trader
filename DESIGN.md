@@ -185,7 +185,41 @@ Population feeds back into price-impact step size (1B) and how many NPC routes t
 
 **4D. Victory** ✅
 Reaching **10,000,000,000** net worth shows a victory screen; the player can continue in sandbox mode.
-### Batch 5 — Production and tier balance ⬜
+### Batch 5 — Production and tier balance ✅
+
+**5A. Rebalanced processed goods** ✅ (overrides the original price list; unlisted goods keep their original base price)
+Principle: line slots are the scarce resource, so lines within a tier should earn similar margins per lot at base
+prices. Choice then depends on geography, inputs and markets.
+
+| Good | Base price | Inputs per lot | Margin per lot at base |
+|---|---|---|---|
+| Cloth | **300,000** | 2 Wool | 160,000 |
+| Steel | 900,000 | 2 Iron Ore + 1 Coal | 480,000 |
+| Glass | **650,000** | 2 Stone + 1 Timber | 490,000 |
+| Furniture | **950,000** | 3 Timber + 1 Cloth | 470,000 |
+| Tools | **1,450,000** | 1 Steel + 1 Timber | 490,000 |
+| Machinery | 12,000,000 | 3 Steel + 2 Tools + 2 Coal | 6,160,000 |
+| Ships | 25,000,000 | **20 Timber + 8 Steel + 6 Cloth + 6 Tools** | 6,100,000 |
+| Jewelry | **14,000,000** | 2 Gold + 1 Tools | 6,550,000 |
+| Medicine | **10,500,000** | 2 Spices + 1 Wine + 1 Glass | 6,550,000 |
+
+**5B. Ships and vehicle classes** ✅
+- 1 lot of Ships = 1 ocean ship: commission it into the fleet or sell it.
+- Capacities: wagon 10 (upgradable to 20), barge 20, coastal vessel 60, ocean ship 250.
+
+**5C. Vehicle availability by stage** ✅
+Wagons and barges from Stage 1; coastal vessels from Stage 2; ocean ships from Stage 3 (shipyard); self-built
+Ships from Stage 4. Spices and Gold are therefore a Stage 3 milestone.
+
+**5D. Retooling lines** ✅
+A line can switch to another good its city can produce for **25% of the line's price** and **14 days** of downtime.
+Each city can buy one **retooling upgrade per stage** from Stage 2, cutting downtime 14 → 12 → 10 → 7 days.
+🟡 Proposed cost: 5M / 50M / 500M at Stages 2 / 3 / 4.
+
+**5E. Input priority and reserves** ✅
+- When lines compete for the same input, the player sets their priority order.
+- Each good has a player-set **"keep at least X lots"** floor that trade routes and offers respect.
+- A line consumes inputs as it produces; if they run out, it stalls until inputs arrive.
 ### Batch 6 — Events ⬜
 
 ## Open design problems (from the initial review)
@@ -193,7 +227,7 @@ Reaching **10,000,000,000** net worth shows a victory screen; the player can con
 1. ~~Net-worth farming~~ — resolved by cost-basis inventory (4A).
 2. ~~Untaxed hoarding~~ — resolved by the storage fee (4B).
 3. ~~Pacing~~ — resolved: a long game is intended (2b-B); line upgrades (3C) give progression within each stage.
-4. Tier 4 balance: Ships keep 75% margin at base prices, Jewelry 11%. — Batch 5
+4. ~~Tier 4 balance~~ — resolved by the rebalance (5A).
 
 ## World generation (replaces the fixed starting world)
 
