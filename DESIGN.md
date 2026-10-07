@@ -92,7 +92,7 @@ Storms, fjord mishaps and frozen fjords affect NPC vehicles exactly like the pla
 **2E. Exploration removed** ✅
 All cities in the generated world are known from the start.
 
-### Batch 2b — Real-time model and world generation 🟡
+### Batch 2b — Real-time model and world generation ✅
 
 **2b-A. Real-time with pause and speed controls** ✅
 Speeds 1×/2×/4×. The game runs unless the player pauses it or presses **Esc**, which opens settings
@@ -100,8 +100,8 @@ Speeds 1×/2×/4×. The game runs unless the player pauses it or presses **Esc**
 
 **2b-B. Clock speed** ✅
 At 1×, **1 game day = 10 seconds** (1 month = 5 minutes, 1 year = 1 hour).
-⚠️ Pacing consequence to resolve in Batch 3: at the original growth rates, one stage takes ~33 game months
-(~2.75 hours at 1×).
+**A long, slow game is intended.** At the original growth rates one stage takes ~33 game months at best
+(~2.75 hours at 1×). Growth tuning is reviewed in Batch 3 with that goal in mind.
 
 **2b-C. Continuous settlement** ✅
 Everything settles continuously: production, vehicle movement, price drift and recovery, upkeep, tax, loan
@@ -114,7 +114,7 @@ interest and population growth. Monthly rates in the rules are pro-rated per sim
 
 **2b-D. NPC offers in real time** ✅
 Offers arrive in an inbox and expire after ~10 game days. A setting controls **auto-pause on offers**
-(default: on). 🟡 Confirm: default on, or default off with an optional value threshold.
+(default: **on**). With it off, offers wait in the inbox while time runs.
 
 **2b-E. World generation** 🟡
 - ✅ Number of cities is a new-game setting: default 10, range 6–16.
@@ -122,8 +122,12 @@ Offers arrive in an inbox and expire after ~10 game days. A setting controls **a
 - ✅ Geography drives production and wants (coast → fish, mountains → ore, south → wine/spices, …).
 - ✅ Starts are deliberately unequal between seeds. Home's production options depend on its site; the only
   guarantee is that home can produce **one food good and one other resource**.
-- 🟡 Home site: always coastal with inland access; whether the coast is a fjord or open ocean varies by seed.
-- 🟡 World-level guarantee that Spices and Gold exist somewhere in every world.
+- ✅ Home site: always coastal with inland access; whether the coast is a **fjord** or **open ocean** varies by seed.
+  - "Fjord" routes are renamed **sheltered-water routes** (barges, coastal vessels). Both home types have them.
+  - Fjord home: safer waters, but its fjord can freeze in winter and it takes extra days to reach the open sea.
+  - Ocean-coast home: shorter ocean trips and no freezing, but more exposure to storms.
+- ✅ Every world guarantees that **Spices and Gold exist somewhere** (possibly far away), so no seed silently
+  locks out Tier 4 Jewelry or Medicine.
 
 ### Batch 3 — Population, food and growth ⬜
 ### Batch 4 — Money: taxes, loans, net worth ⬜
