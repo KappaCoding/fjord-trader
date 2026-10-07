@@ -116,7 +116,7 @@ interest and population growth. Monthly rates in the rules are pro-rated per sim
 Offers arrive in an inbox and expire after ~10 game days. A setting controls **auto-pause on offers**
 (default: **on**). With it off, offers wait in the inbox while time runs.
 
-**2b-E. World generation** 🟡
+**2b-E. World generation** ✅
 - ✅ Number of cities is a new-game setting: default 10, range 6–16.
 - ✅ Names are generated from syllables in two or three culture styles (northern, southern, eastern).
 - ✅ Geography drives production and wants (coast → fish, mountains → ore, south → wine/spices, …).
