@@ -7,7 +7,7 @@ it isn't decided yet — ask, don't improvise.
 
 ## Project setup
 
-- Engine: **Godot 4, Standard version** (no .NET), language **GDScript**.
+- Engine: **Godot 4.7.x, Standard version** (no .NET), language **GDScript**.
 - Presentation: **interactive dashboard** (tables, panels, buttons). Map/visual polish is a later phase.
 - **Real-time strategy, not turn-based** (overrides the original ruleset's turn structure). Exact time model is in Batch 2b.
 - Architecture:
@@ -220,7 +220,33 @@ Each city can buy one **retooling upgrade per stage** from Stage 2, cutting down
 - When lines compete for the same input, the player sets their priority order.
 - Each good has a player-set **"keep at least X lots"** floor that trade routes and offers respect.
 - A line consumes inputs as it produces; if they run out, it stalls until inputs arrive.
-### Batch 6 — Events ⬜
+### Batch 6 — Events ✅
+
+**6A. Frequency** ✅ About one event per game month on average.
+
+**6B. Catalogue** ✅ Only two event types (more can be added later as data, after playtesting):
+- **Festival:** a city temporarily wants a good at **1.5×** its listed price for **1 month**.
+  🟡 Proposed: festival goods scale with the city's size — small towns celebrate with food and drink
+  (Grain, Fish, Salt, Wine), large cities with luxuries (Furniture, Jewelry, Glass).
+- **Delivery contract:** a city offers a fixed price of **1.5× its listed price** for X lots of a good,
+  delivered within a window. Contract lots are paid at the fixed price, without price impact.
+
+**6C. No disasters** ✅
+No plagues, fires, mine collapses or similar events. Events never damage the player's cities.
+(Transport risk from 2D — ocean storms, fjord mishaps, freezing, spring mud — stays; it is a rule, not an event.)
+
+**6D. Announcements and contract flow** ✅ (🟡 flow to confirm)
+- Upcoming festivals and contracts are announced in a **news feed** ahead of time.
+- Contracts are **optional**: the player accepts or declines (inbox; auto-pause setting applies).
+- Proposed flow: announced in news (~15–30 days ahead) → offer opens → if accepted, the delivery window
+  starts **3–5 days later** → lots delivered in the window are paid the contract price → missing the full
+  quantity gives **−5% on sales in that city for 3 months**. Declining has no penalty.
+
+**6E. Reputation** ✅ No reputation system for now; penalties are temporary price modifiers.
+
+### Not yet reviewed ⬜
+- **Founding new cities** (original section 8): site selection on the generated map, costs, starting state.
+  Review before the milestone that builds it.
 
 ## Open design problems (from the initial review)
 
