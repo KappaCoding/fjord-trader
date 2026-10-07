@@ -214,7 +214,7 @@ Ships from Stage 4. Spices and Gold are therefore a Stage 3 milestone.
 **5D. Retooling lines** ✅
 A line can switch to another good its city can produce for **25% of the line's price** and **14 days** of downtime.
 Each city can buy one **retooling upgrade per stage** from Stage 2, cutting downtime 14 → 12 → 10 → 7 days.
-🟡 Proposed cost: 5M / 50M / 500M at Stages 2 / 3 / 4.
+Upgrade cost: **5M / 50M / 500M** at Stages 2 / 3 / 4.
 
 **5E. Input priority and reserves** ✅
 - When lines compete for the same input, the player sets their priority order.
@@ -224,21 +224,28 @@ Each city can buy one **retooling upgrade per stage** from Stage 2, cutting down
 
 **6A. Frequency** ✅ About one event per game month on average.
 
-**6B. Catalogue** ✅ Only two event types (more can be added later as data, after playtesting):
-- **Festival:** a city temporarily wants a good at **1.5×** its listed price for **1 month**.
-  🟡 Proposed: festival goods scale with the city's size — small towns celebrate with food and drink
-  (Grain, Fish, Salt, Wine), large cities with luxuries (Furniture, Jewelry, Glass).
-- **Delivery contract:** a city offers a fixed price of **1.5× its listed price** for X lots of a good,
-  delivered within a window. Contract lots are paid at the fixed price, without price impact.
+**6B. Catalogue** ✅ (numbers live in a data file for tuning)
+
+| Event | Effect | Duration | Warning |
+|---|---|---|---|
+| Festival | A city wants a good at **1.5×** listed. Goods scale with city size: small towns celebrate with food and drink (Grain, Fish, Salt, Wine), large cities with luxuries (Furniture, Jewelry, Glass). | 1 month | announced |
+| Delivery contract | Optional fixed-price order (see 6D) | until deadline | announced |
+| Hard winter | Fjords freeze one month earlier and thaw one month later | one winter | announced |
+| Crop failure | One **NPC** city's Grain or Fish price ×1.6; that city's growth −1% | 3–4 months | announced |
+| Gold rush | The Gold city: Gold price ×0.7, population +10%, Tools and Grain become wants | 6 months | sudden |
+| Migration wave | One city's population +5% (can be the player's) | instant | sudden |
+| Price shock | One good ×1.3 or ×0.75 in every city | 2–3 months | sudden |
+| Guild subsidy | Player infrastructure costs −20% | 2 months | sudden (shows duration) |
 
 **6C. No disasters** ✅
-No plagues, fires, mine collapses or similar events. Events never damage the player's cities.
+No plagues, fires, mine collapses or similar events. Events never damage the player's cities: crop failures only
+hit NPC cities, and events that touch the player (migration wave, guild subsidy) are positive.
 (Transport risk from 2D — ocean storms, fjord mishaps, freezing, spring mud — stays; it is a rule, not an event.)
 
-**6D. Announcements and contract flow** ✅ (🟡 flow to confirm)
+**6D. Announcements and contract flow** ✅
 - Upcoming festivals and contracts are announced in a **news feed** ahead of time.
 - Contracts are **optional**: the player accepts or declines (inbox; auto-pause setting applies).
-- Proposed flow: announced in news (~15–30 days ahead) → offer opens → if accepted, the delivery window
+- Flow: announced in news (~15–30 days ahead) → offer opens → if accepted, the delivery window
   starts **3–5 days later** → lots delivered in the window are paid the contract price → missing the full
   quantity gives **−5% on sales in that city for 3 months**. Declining has no penalty.
 
