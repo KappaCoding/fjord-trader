@@ -1,0 +1,25 @@
+{
+	"_comment": "Base prices per lot and production inputs per lot. Source of truth: DESIGN.md (5A). tier 0 = import-only.",
+	"goods": [
+		{ "id": "Grain",     "base": 40000,    "tier": 1, "food": true,  "inputs": {} },
+		{ "id": "Fish",      "base": 55000,    "tier": 1, "food": true,  "inputs": {} },
+		{ "id": "Timber",    "base": 60000,    "tier": 1, "food": false, "inputs": {} },
+		{ "id": "Wool",      "base": 70000,    "tier": 1, "food": false, "inputs": {} },
+		{ "id": "Stone",     "base": 50000,    "tier": 1, "food": false, "inputs": {} },
+		{ "id": "Salt",      "base": 90000,    "tier": 1, "food": false, "inputs": {} },
+		{ "id": "Iron Ore",  "base": 150000,   "tier": 2, "food": false, "inputs": {} },
+		{ "id": "Coal",      "base": 120000,   "tier": 2, "food": false, "inputs": {} },
+		{ "id": "Wine",      "base": 300000,   "tier": 2, "food": false, "inputs": {} },
+		{ "id": "Cloth",     "base": 300000,   "tier": 2, "food": false, "inputs": { "Wool": 2 } },
+		{ "id": "Steel",     "base": 900000,   "tier": 3, "food": false, "inputs": { "Iron Ore": 2, "Coal": 1 } },
+		{ "id": "Glass",     "base": 650000,   "tier": 3, "food": false, "inputs": { "Stone": 2, "Timber": 1 } },
+		{ "id": "Furniture", "base": 950000,   "tier": 3, "food": false, "inputs": { "Timber": 3, "Cloth": 1 } },
+		{ "id": "Tools",     "base": 1450000,  "tier": 3, "food": false, "inputs": { "Steel": 1, "Timber": 1 } },
+		{ "id": "Machinery", "base": 12000000, "tier": 4, "food": false, "inputs": { "Steel": 3, "Tools": 2, "Coal": 2 } },
+		{ "id": "Ships",     "base": 25000000, "tier": 4, "food": false, "inputs": { "Timber": 20, "Steel": 8, "Cloth": 6, "Tools": 6 } },
+		{ "id": "Jewelry",   "base": 14000000, "tier": 4, "food": false, "inputs": { "Gold": 2, "Tools": 1 } },
+		{ "id": "Medicine",  "base": 10500000, "tier": 4, "food": false, "inputs": { "Spices": 2, "Wine": 1, "Glass": 1 } },
+		{ "id": "Spices",    "base": 1500000,  "tier": 0, "food": false, "inputs": {} },
+		{ "id": "Gold",      "base": 3000000,  "tier": 0, "food": false, "inputs": {} }
+	]
+}

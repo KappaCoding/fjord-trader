@@ -128,6 +128,9 @@ Offers arrive in an inbox and expire after ~10 game days. A setting controls **a
   - Ocean-coast home: shorter ocean trips and no freezing, but more exposure to storms.
 - ✅ Every world guarantees that **Spices and Gold exist somewhere** (possibly far away), so no seed silently
   locks out Tier 4 Jewelry or Medicine.
+- 🟡 Playability checks added while building Milestone 1 (confirm): the starting wagon and barge each have at
+  least one direct destination, and every city can be reached from home by some route (directly or via other
+  cities). The mainland always has a connected road network.
 
 ### Batch 3 — Population, food and growth ✅
 

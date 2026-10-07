@@ -1,0 +1,17 @@
+{
+	"_comment": "Syllables for procedural city names. northern = prefix + suffix (water suffixes only for water sites); southern = start + end; eastern = start + middle + end.",
+	"northern": {
+		"prefix": ["Rav", "Grim", "Brekk", "Skjold", "Hval", "Ulf", "Torv", "Sva", "Kol", "Bjørn", "Ask", "Fjell", "Is", "Lind", "Hav", "Vid", "Ørn", "Sel", "Sten", "Hjort", "Vind", "Mørk", "Salt", "Tor", "Ege", "Rime", "Fros", "Gran", "Hel", "Ber"],
+		"water_suffix": ["fjord", "vik", "nes", "havn", "sund", "strand", "holm", "øy", "våg"],
+		"land_suffix": ["dal", "borg", "heim", "stad", "by", "berg", "ås", "mark", "lund", "rud", "torp"]
+	},
+	"southern": {
+		"start": ["Val", "Mor", "Aur", "Cal", "Ser", "Lu", "Tor", "Mar", "Ves", "Ama", "Sol", "Cor", "Lir", "Pal", "Ter", "Ost", "Bel", "Fen", "Ard", "Ren"],
+		"end": ["mora", "lia", "enza", "ano", "ica", "essa", "ona", "ento", "ara", "ino", "ella", "ova", "ante", "ira", "edo"]
+	},
+	"eastern": {
+		"start": ["Za", "Qa", "Ka", "Sa", "Ish", "Ar", "Ne", "Ba", "Da", "Ha", "Ta", "Mi", "Ra", "Su", "Ya"],
+		"middle": ["fi", "sha", "ra", "ma", "ri", "za", "ha", "li", "na", ""],
+		"end": ["ran", "dar", "kesh", "bad", "than", "mir", "zan", "dun", "qand", "rah", "sar", "lun"]
+	}
+}

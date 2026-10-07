@@ -1,0 +1,49 @@
+{
+	"_comment": "Tunable numbers. Source of truth for the rules: DESIGN.md. Change numbers here, not in code.",
+	"clock": {
+		"seconds_per_day_at_1x": 10,
+		"days_per_month": 30,
+		"months_per_year": 12,
+		"start_month": 4,
+		"speeds": [1, 2, 4],
+		"max_steps_per_frame": 48
+	},
+	"market": {
+		"sell_spread": 0.10,
+		"home_multiplier": 0.75,
+		"bands": {
+			"surplus": [0.60, 0.85],
+			"neutral": [0.90, 1.10],
+			"want": [1.25, 2.00]
+		},
+		"drift_per_month": 0.03,
+		"recovery_per_month": 0.25,
+		"impact_steps": [
+			{ "below_pop": 10000, "step": 0.03 },
+			{ "below_pop": 50000, "step": 0.02 },
+			{ "below_pop": 250000, "step": 0.015 },
+			{ "below_pop": -1, "step": 0.01 }
+		],
+		"want_change_months": [4, 8],
+		"wants_per_city": 2
+	},
+	"world": {
+		"npc_cities_default": 10,
+		"npc_cities_min": 6,
+		"npc_cities_max": 16,
+		"home_population": 2000,
+		"overseas_share": 0.25,
+		"fjord_share_of_mainland": 0.25,
+		"coast_share_of_mainland": 0.25,
+		"min_spacing_mainland": 90,
+		"min_spacing_overseas": 150,
+		"land_max_distance": 320,
+		"sheltered_max_distance": 380,
+		"route_factor": { "land": 1.3, "sheltered": 1.2, "ocean": 1.0 },
+		"speed_units_per_day": { "wagon": 12, "barge": 16, "coastal": 20, "ocean": 30 },
+		"route_vehicle": { "land": "wagon", "sheltered": "barge", "ocean": "ocean" },
+		"fjord_exit_days": [3, 6],
+		"climate_north_below_y": 350,
+		"climate_temperate_below_y": 700
+	}
+}
