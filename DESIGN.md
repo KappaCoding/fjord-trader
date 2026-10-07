@@ -157,14 +157,41 @@ A city that falls below its stage's population threshold keeps its stage and its
 **3E. NPC cities grow and shrink** ✅
 NPC city populations change slowly based on how well their wants are supplied (by the player or NPC routes).
 Population feeds back into price-impact step size (1B) and how many NPC routes the city runs (2B).
-### Batch 4 — Money: taxes, loans, net worth ⬜
+### Batch 4 — Money: taxes, loans, net worth ✅
+
+**4A. Net worth** ✅
+`net worth = treasury + inventory + vehicles + production lines (incl. upgrades) + infrastructure − outstanding loans`
+- **Loans are subtracted.** (Fix to the original formula: without it, borrowing raised net worth, which raised the
+  loan limit, which allowed more borrowing.)
+- **Inventory at cost basis:** bought goods count at their weighted-average purchase cost; produced goods count at
+  0.75× base. Buying can never inflate net worth; only profitable selling can. Average cost per good is also used
+  to show real profit per route in the UI.
+- Vehicles, lines, upgrades and infrastructure count at purchase cost (starting lines 500,000 each).
+
+**4B. Tax and storage** ✅ (both continuous, pro-rated)
+- Tax: **1% of treasury per month**, or the stage minimum if higher (25,000 / 250,000 / 2,500,000 / 25,000,000
+  per month at Stages 1–4).
+- Storage fee: **0.5% of inventory value (cost basis) per month.**
+- Lines, vehicles and infrastructure are not taxed (vehicles pay upkeep: ~2% of value per month).
+
+**4C. Loans, emergency credit and default** ✅
+- Loans: **3% interest per month**, accrued continuously, up to 50% of net worth, repayable at any time.
+- Emergency loan: if a cost would push the treasury below zero, an emergency loan opens automatically at
+  **5.5% per month**, within the same 50% limit. The forecast panel warns before this happens.
+- Default (limit reached and still short): creditors seize warehouse goods, then vehicles, selling them at 50% of
+  value until the debt is covered; all cities pay the player 10% less for 12 months. If net worth is still
+  negative afterwards: game over.
+- Having any loan forfeits the +1% treasury-health growth bonus (3B).
+
+**4D. Victory** ✅
+Reaching **10,000,000,000** net worth shows a victory screen; the player can continue in sandbox mode.
 ### Batch 5 — Production and tier balance ⬜
 ### Batch 6 — Events ⬜
 
 ## Open design problems (from the initial review)
 
-1. Net worth can be farmed by buying below base and holding (inventory counts at base value). — Batch 4
-2. The 1% treasury tax doesn't touch inventory, so hoarding goods is untaxed. — Batch 4
+1. ~~Net-worth farming~~ — resolved by cost-basis inventory (4A).
+2. ~~Untaxed hoarding~~ — resolved by the storage fee (4B).
 3. ~~Pacing~~ — resolved: a long game is intended (2b-B); line upgrades (3C) give progression within each stage.
 4. Tier 4 balance: Ships keep 75% margin at base prices, Jewelry 11%. — Batch 5
 
