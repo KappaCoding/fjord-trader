@@ -129,7 +129,34 @@ Offers arrive in an inbox and expire after ~10 game days. A setting controls **a
 - ✅ Every world guarantees that **Spices and Gold exist somewhere** (possibly far away), so no seed silently
   locks out Tier 4 Jewelry or Medicine.
 
-### Batch 3 — Population, food and growth ⬜
+### Batch 3 — Population, food and growth ✅
+
+**3A. Food** ✅
+- Each city eats **1 lot of Grain or Fish per 2,500 population per month**, deducted continuously from the warehouse.
+- No food in stock → growth stops. After **90 days** without food, population declines **2% per month** until food returns.
+
+**3B. Growth formula** ✅ (per month, pro-rated continuously, **capped at 5%**)
+| Condition | Growth |
+|---|---|
+| City is fed | 2% (base; no growth at all if unfed) |
+| ≥ 3 months of food in stock | +1% |
+| No loans and treasury ≥ 1M × 10^(stage − 1) | +1% |
+| Housing, harbor, roads (one each per stage) | +0.5% each |
+| Food variety: both Grain and Fish in stock | +0.5% |
+
+Infrastructure costs ~1M / 10M / 100M / 1B per upgrade at Stages 1–4. Harbor also cuts sheltered-water and ocean
+trip fees by 10%; roads speed up wagons (see 2D).
+
+**3C. Production line upgrades** ✅
+Each line can be upgraded twice: output **10 → 15 → 20 lots/month**. The first upgrade costs **2×** the line's
+purchase price, the second **4×** (starting Tier 1 lines count as 500,000, so 1,000,000 and 2,000,000).
+
+**3D. Stages never regress** ✅
+A city that falls below its stage's population threshold keeps its stage and its lines.
+
+**3E. NPC cities grow and shrink** ✅
+NPC city populations change slowly based on how well their wants are supplied (by the player or NPC routes).
+Population feeds back into price-impact step size (1B) and how many NPC routes the city runs (2B).
 ### Batch 4 — Money: taxes, loans, net worth ⬜
 ### Batch 5 — Production and tier balance ⬜
 ### Batch 6 — Events ⬜
@@ -138,7 +165,7 @@ Offers arrive in an inbox and expire after ~10 game days. A setting controls **a
 
 1. Net worth can be farmed by buying below base and holding (inventory counts at base value). — Batch 4
 2. The 1% treasury tax doesn't touch inventory, so hoarding goods is untaxed. — Batch 4
-3. Pacing: ~33 turns per stage at the 5% growth cap, ~99 turns to Metropolis. — Batch 3
+3. ~~Pacing~~ — resolved: a long game is intended (2b-B); line upgrades (3C) give progression within each stage.
 4. Tier 4 balance: Ships keep 75% margin at base prices, Jewelry 11%. — Batch 5
 
 ## World generation (replaces the fixed starting world)
