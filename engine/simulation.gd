@@ -4,6 +4,9 @@ extends RefCounted
 
 const Data := preload("res://engine/data.gd")
 const Market := preload("res://engine/market.gd")
+const Economy := preload("res://engine/economy.gd")
+const Transport := preload("res://engine/transport.gd")
+const News := preload("res://engine/news.gd")
 
 const MONTH_NAMES := ["January", "February", "March", "April", "May", "June",
 	"July", "August", "September", "October", "November", "December"]
@@ -15,23 +18,30 @@ static func advance(state: Dictionary, rng: RandomNumberGenerator, hours: int) -
 		_step_hour(state, rng)
 
 
+## One hour, always in the same order (determinism): markets, production, vehicles,
+## running costs, month rollover, want changes.
 static func _step_hour(state: Dictionary, rng: RandomNumberGenerator) -> void:
 	var t := int(state["time_hours"]) + 1
 	state["time_hours"] = t
 	var month_boundary := t % Data.hours_per_month() == 0
 	var cities: Dictionary = state["cities"]
+
+	for id in state["city_order"]:
+		Market.step_market(cities[id], 1)
+	for id in Economy.player_city_ids(state):
+		Economy.step_production(state, cities[id], 1)
+	Transport.step_vehicles(state)
+	Economy.step_costs(state, 1)
+
+	if month_boundary:
+		Economy.roll_ledger(state)
+		for id in state["city_order"]:
+			Market.reroll_drift(cities[id], rng)
 	for id in state["city_order"]:
 		var city: Dictionary = cities[id]
-		Market.step_market(city, 1)
-		if month_boundary:
-			Market.reroll_drift(city, rng)
 		city["want_timer_hours"] = int(city["want_timer_hours"]) - 1
 		if int(city["want_timer_hours"]) <= 0:
-			add_news(state, Market.rotate_wants(city, rng))
-
-
-static func add_news(state: Dictionary, text: String) -> void:
-	state["news"].append({"t": int(state["time_hours"]), "text": text})
+			News.add(state, Market.rotate_wants(city, rng), News.KIND_MARKET)
 
 
 ## Calendar date for a time in hours: {year, month, day, hour}. Year 1 starts in start_month.

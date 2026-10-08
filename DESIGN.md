@@ -8,7 +8,8 @@ it isn't decided yet — ask, don't improvise.
 ## Project setup
 
 - Engine: **Godot 4.7.x, Standard version** (no .NET), language **GDScript**.
-- Presentation: **interactive dashboard** (tables, panels, buttons). Map/visual polish is a later phase.
+- Presentation: **interactive dashboard** (tables, panels, buttons) with a **schematic world map** that shows which
+  vehicle reaches which city and how (added in Milestone 2 at Ludvig's request). Visual polish is a later phase.
 - **Real-time strategy, not turn-based** (overrides the original ruleset's turn structure). Exact time model is in Batch 2b.
 - Architecture:
   - `engine/` — pure rules logic, no UI. The simulation advances in fixed ticks: `tick(state, commands) -> new_state + log`.
@@ -128,9 +129,39 @@ Offers arrive in an inbox and expire after ~10 game days. A setting controls **a
   - Ocean-coast home: shorter ocean trips and no freezing, but more exposure to storms.
 - ✅ Every world guarantees that **Spices and Gold exist somewhere** (possibly far away), so no seed silently
   locks out Tier 4 Jewelry or Medicine.
-- 🟡 Playability checks added while building Milestone 1 (confirm): the starting wagon and barge each have at
-  least one direct destination, and every city can be reached from home by some route (directly or via other
-  cities). The mainland always has a connected road network.
+- 🟡 Playability checks added while building Milestone 1 (awaiting confirmation): the starting wagon and barge each
+  have at least one direct destination, and every city can be reached from home by some route (directly or via
+  other cities). The mainland always has a connected road network.
+
+### Batch 2c — Trading in real time ✅ (decided while building Milestone 2)
+
+**2c-A. Trip planner** ✅
+Trade with other cities happens through **trips**. The player picks an idle vehicle at home and a destination the
+vehicle can reach, loads goods from the warehouse to sell there, and lists goods to buy there. The vehicle travels
+(possibly through other cities, without trading there), trades, and comes home. Buy/Sell buttons on a city's market
+open the planner pre-filled. A trip is the building block for trade routes (Milestone 4: a route is a saved trip
+that repeats, with multiple stops).
+
+**2c-B. Arrival prices** ✅
+A trip trades at the market price **when the vehicle arrives**. The planner shows an estimate at today's prices.
+On arrival the vehicle sells all its cargo, then buys the listed goods lot by lot, stopping early if the treasury
+can't pay for the next lot.
+
+**2c-C. Trip fees (cheap)** ✅
+Per day of travel, the original per-month-of-travel fee ÷ 30: **wagon 500/day, barge 1,333/day,
+ocean ship 5,000/day** (coastal vessel as barge). Each leg's fee is charged when the vehicle departs (2D).
+
+**2c-D. After a trip** ✅
+The vehicle **returns home automatically** and unloads into the warehouse.
+
+**2c-E. Implementation notes** ✅
+- The home market buys from the player instantly (the warehouse is at home); it sells nothing until NPC traders
+  supply it (Milestone 5).
+- Production trickles in continuously: a 10-lots/month line adds one lot every 3 days.
+- The first choice of what each starting line produces is free; changing it later is retooling (5D).
+- Storage fee (4B) applies to warehouse stock, not to cargo on vehicles.
+- Until emergency loans exist (Milestone 6), running costs can push the treasury below zero; purchases, fees for
+  new trips and investments are refused if the treasury can't pay.
 
 ### Batch 3 — Population, food and growth ✅
 

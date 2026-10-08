@@ -5,7 +5,7 @@ Each milestone ends with something you can open and run in Godot. Rules come fro
 | # | Milestone | You can… |
 |---|---|---|
 | 1 ✅ | **Foundation** | Generate a world from a seed and watch its markets live: cities, names, routes, prices drifting in real time, pause and 1×/2×/4× speed, save/load. |
-| 2 | **First playable** | Pick your two home lines, produce, buy and sell, send wagons and barges on one-off trips, pay upkeep, tax and storage; see everything in the forecast panel. |
+| 2 ✅ | **First playable** | Pick your two home lines, produce, buy and sell, send wagons and barges on one-off trips, pay upkeep, tax and storage; see everything in the forecast panel. |
 | 3 | **Growing the city** | Food, population growth, stages, infrastructure, line upgrades, retooling, input priority and reserves. |
 | 4 | **Trade routes** | Set up repeating routes with price limits and lot caps; see profit per route. |
 | 5 | **A living world** | Visible NPC routes, NPC cities growing and shrinking, NPC sales into your home market, buy offers with the inbox and auto-pause. |
@@ -32,7 +32,24 @@ Notes from building it:
 - The mainland always has a connected road network (a road to each city's nearest neighbour).
 - Saves are binary for exactness; Godot's JSON parser can change floats by one bit.
 
-## Milestone 2 — First playable (next)
+## Milestone 2 — First playable ✅ (done)
 
-Choose two home production lines; production; warehouse; buy and sell at cities; one-off trips with the starting
-wagon and barge; upkeep, tax and storage fee; the forecast panel.
+- Choose what your two home lines produce (free the first time; retooling afterwards: 25% of the line, 14 days).
+- Continuous production into the warehouse, with cost basis (produced lots count at 0.75 × base).
+- Trip planner: vehicle, destination, goods to sell there and to buy there; trades at arrival prices; auto-return.
+- Cheap per-day trip fees; vehicle upkeep, tax and storage fee charged continuously with exact coin accounting.
+- Home market: instant sales at 75% prices.
+- Buy wagons and barges.
+- Schematic world map: land, sea, fjords, terrain, routes by type, the selected city's routes, planned route,
+  vehicles on the move, price overlay per good.
+- Finances tab (forecast panel): running costs, committed fees, runway, this and last month's books.
+- 124 headless engine tests.
+
+Notes from building it:
+- Retooling (planned for Milestone 3) was pulled forward so production can be changed.
+- Saves from Milestone 1 can't be loaded (the state layout changed); the game says so instead of breaking.
+
+## Milestone 3 — Growing the city (next)
+
+Food consumption, population growth and stages, infrastructure, line upgrades, retooling upgrades, input priority
+and reserves.

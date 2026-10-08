@@ -8,6 +8,36 @@
 		"speeds": [1, 2, 4],
 		"max_steps_per_frame": 48
 	},
+	"start": {
+		"treasury": 3000000,
+		"vehicles": ["wagon", "barge"],
+		"stage": 1
+	},
+	"stages": [
+		{ "stage": 1, "name": "Settlement", "min_pop": 0,      "max_lines": 2,  "tax_min_per_month": 25000 },
+		{ "stage": 2, "name": "Town",       "min_pop": 10000,  "max_lines": 4,  "tax_min_per_month": 250000 },
+		{ "stage": 3, "name": "City",       "min_pop": 50000,  "max_lines": 7,  "tax_min_per_month": 2500000 },
+		{ "stage": 4, "name": "Metropolis", "min_pop": 250000, "max_lines": 12, "tax_min_per_month": 25000000 }
+	],
+	"economy": {
+		"tax_share_per_month": 0.01,
+		"storage_share_per_month": 0.005,
+		"produced_goods_value_share": 0.75,
+		"line_output_per_month": 10,
+		"line_cost_by_tier": { "1": 500000, "2": 3000000, "3": 25000000, "4": 200000000 },
+		"retool_cost_share": 0.25,
+		"retool_days": 14
+	},
+	"vehicles": {
+		"upkeep_share_per_month": 0.02,
+		"types": {
+			"wagon":   { "label": "Wagon",          "route": "land",      "capacity": 10,  "price": 200000,   "min_stage": 1, "fee_per_month_of_travel": 15000 },
+			"barge":   { "label": "Barge",          "route": "sheltered", "capacity": 20,  "price": 1500000,  "min_stage": 1, "fee_per_month_of_travel": 40000 },
+			"coastal": { "label": "Coastal vessel", "route": "sheltered", "capacity": 60,  "price": 8000000,  "min_stage": 2, "fee_per_month_of_travel": 40000 },
+			"ocean":   { "label": "Ocean ship",     "route": "ocean",     "capacity": 250, "price": 40000000, "min_stage": 3, "fee_per_month_of_travel": 150000 }
+		},
+		"order": ["wagon", "barge", "coastal", "ocean"]
+	},
 	"market": {
 		"sell_spread": 0.10,
 		"home_multiplier": 0.75,
