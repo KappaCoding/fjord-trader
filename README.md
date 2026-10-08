@@ -13,28 +13,35 @@ setting up trade routes and competing with NPC traders across a procedurally gen
 3. In Godot's Project Manager, click **Import**, select `project.godot` in this folder, then **Import & Edit**.
 4. Press **F5** (or the ▶ button, top right) to run.
 
-## How to play (Milestone 2)
+## How to play
 
 1. **Choose production.** A new world starts paused and asks what your two lines should make. Each line makes
-   10 lots a month (one every 3 days). The dialog shows what each good fetches at home and where it sells best.
-2. **Read the map.** Your home is the gold dot. Lines show the routes your vehicles use from home:
-   dashed sand = road (wagons), light blue = sheltered water (barges), dotted blue = open sea (ocean ships, from
-   Stage 3; tick *Open sea* to see them). Hollow cities can't be reached by any vehicle you own.
-   Click a city to see its market and *Getting there*: which vehicle reaches it, how many days, and through which towns.
-3. **Find a market.** Pick a good under *Prices* (or click a good's name) to colour every city by what it pays you:
-   green = it wants the good and pays a premium, orange = it produces it and pays little.
-4. **Trade.** Press **Sell** or **Buy** in a city's market, or **Plan trip** on a vehicle. The planner picks the
-   fastest vehicle, shows the route on the map, and estimates sales, purchases and fees. The vehicle trades at the
-   prices on arrival and comes home by itself. Bought goods land in your warehouse; sell them on a later trip.
-5. **Watch your money.** Running costs (upkeep, tax, storage) tick continuously. The **Finances** tab shows them per
-   month, how long your money lasts, and this and last month's books.
+   10 lots a month (one every 3 days). **What can I make?** lists every good, whether your land and stage allow it,
+   its inputs, and where it sells best.
+2. **Grow your settlement.** Your people eat Grain or Fish from the warehouse; with no food there is no growth.
+   The panel on the left shows the growth rate, what boosts it, what's missing, and when you reach the next stage.
+   **Infrastructure** speeds things up: housing adds 15% people at once, roads make wagons faster, a harbor cuts
+   water fees. Stage 2 (10,000 people) unlocks more lines and Tier 2 goods.
+3. **Read the map.** Lines show the routes your vehicles use from home: dashed sand = road (wagons), light blue =
+   sheltered water (barges), dotted blue = open sea (ocean ships, from Stage 3). Hollow cities can't be reached by
+   any vehicle you own. Click a city for its market and *Getting there*.
+4. **Find a market.** Pick a good under *Prices* (or click a good's name) to colour every city by what it pays.
+5. **Trade with routes.** Press **Buy**/**Sell** in a city's market or **Plan route** on a vehicle. A route loads goods
+   at home, visits one or more stops (sell some goods, buy others at each), and comes home. Tick **Repeat** to make it
+   a standing trade route; *Stop after this loop* ends it. Price limits are optional (0 = none). **Keep** in the
+   warehouse reserves lots that routes will never take.
+6. **Watch your money.** The **Finances** tab shows running costs, fees already committed, how long your money
+   lasts, and this and last month's books.
 
 | Key / button | Does |
 |---|---|
 | Space or **Pause** | Pause / resume |
 | 1, 2, 3 or **1× 2× 4×** | Game speed (1× = one game day every 10 seconds) |
+| F11 | Fullscreen on/off |
 | Esc | Pause (the settings menu comes later) |
 | **Game ▾** | New world (seed + city count), Save, Load |
+
+The game is laid out for 1920×1080 and scales to your window.
 
 ## Tests
 

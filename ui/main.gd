@@ -14,8 +14,8 @@ const WorldMap := preload("res://ui/world_map.gd")
 const CityPanel := preload("res://ui/city_panel.gd")
 const SettlementPanel := preload("res://ui/settlement_panel.gd")
 const FinancePanel := preload("res://ui/finance_panel.gd")
-const TripPlanner := preload("res://ui/trip_planner.gd")
-const LineDialog := preload("res://ui/line_dialog.gd")
+const RouteEditor := preload("res://ui/route_editor.gd")
+const GoodsDialog := preload("res://ui/goods_dialog.gd")
 const SellHomeDialog := preload("res://ui/sell_home_dialog.gd")
 
 const SAVE_PATH := "user://saves/quicksave.sav"
@@ -44,8 +44,8 @@ var city_panel: CityPanel
 var settlement: SettlementPanel
 var finance: FinancePanel
 var news_list: ItemList
-var planner: TripPlanner
-var line_dialog: LineDialog
+var planner: RouteEditor
+var goods_dialog: GoodsDialog
 var sell_dialog: SellHomeDialog
 var new_world_dialog: ConfirmationDialog
 var seed_edit: LineEdit
@@ -55,7 +55,7 @@ var message_dialog: AcceptDialog
 
 func _ready() -> void:
 	var t := Theme.new()
-	t.default_font_size = 14
+	t.default_font_size = 15
 	theme = t
 	_build_ui()
 	_start_new_world(_random_seed_text(), int(Data.balance()["world"]["npc_cities_default"]))
@@ -107,6 +107,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_speed(2)
 		KEY_3:
 			_set_speed(4)
+		KEY_F11:
+			var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
 		_:
 			return
 	get_viewport().set_input_as_handled()
@@ -142,7 +145,7 @@ func _ask_next_line() -> void:
 	var lines: Array = game.home()["lines"]
 	for i in lines.size():
 		if String(lines[i]["good"]) == "" and String(lines[i]["retool_to"]) == "":
-			line_dialog.open_for(game, i)
+			goods_dialog.open_for_line(game, i)
 			return
 	if _choosing_lines:
 		_choosing_lines = false
@@ -176,23 +179,67 @@ func _on_city_clicked(id: String) -> void:
 	world_map.queue_redraw()
 
 
+## Buy/Sell in a city's market: a one-stop route with that good preset (-1 = as much as fits).
 func _on_plan_trip(dest: String, sell: Dictionary, buy: Dictionary) -> void:
-	if not planner.open_for(game, "", dest, sell, buy):
-		_message("Plan a trip", "All your vehicles are away. Wait for one to come home, or buy another.")
+	var stop := {"city": dest, "sell": {}, "buy": {}}
+	for g in sell:
+		stop["sell"][g] = {"lots": -1}
+	for g in buy:
+		stop["buy"][g] = {"lots": -1}
+	var route := {"load": sell.duplicate(), "stops": [stop], "repeat": false}
+	if not planner.open_for(game, "", route):
+		_message("Plan a route", "All your vehicles are busy. Wait for one to come home, or buy another.")
 
 
 func _on_plan_with_vehicle(vehicle_id: String) -> void:
-	var dest := selected_id if selected_id != game.state["home_id"] else ""
-	if not planner.open_for(game, vehicle_id, dest, {}, {}):
-		_message("Plan a trip", "That vehicle is away.")
+	var v := Transport.vehicle(game.state, vehicle_id)
+	var route: Dictionary = v["last_route"].duplicate(true)
+	if route.is_empty() and selected_id != game.state["home_id"]:
+		route = {"load": {}, "stops": [{"city": selected_id, "sell": {}, "buy": {}}], "repeat": false}
+	if not planner.open_for(game, vehicle_id, route):
+		_message("Plan a route", "That vehicle is busy.")
 
 
-func _on_trip_submitted(vehicle_id: String, dest: String, sell: Dictionary, buy: Dictionary) -> void:
-	var r := game.send_trip(vehicle_id, dest, sell, buy)
+func _on_route_submitted(vehicle_id: String, route: Dictionary) -> void:
+	var r := game.send_route(vehicle_id, route)
+	var v := Transport.vehicle(game.state, vehicle_id)
 	if r["errors"].is_empty():
-		_status("%s is on its way to %s." % [Transport.vehicle(game.state, vehicle_id)["name"], game.state["cities"][dest]["name"]])
+		_status("%s set out: %s." % [v["name"], Transport.route_names(game.state, v["route"])])
 	else:
-		_message("Trip not sent", "\n".join(PackedStringArray(r["errors"])))
+		_message("Route not started", "\n".join(PackedStringArray(r["errors"])))
+	_refresh()
+
+
+func _on_stop_route(vehicle_id: String, on: bool) -> void:
+	game.stop_route(vehicle_id, on)
+	_refresh()
+
+
+func _on_line_added(good: String) -> void:
+	_report("Production", game.add_line(good))
+
+
+func _on_upgrade_line(index: int) -> void:
+	_report("Production", game.upgrade_line(index))
+
+
+func _on_move_line(index: int, delta: int) -> void:
+	game.move_line(index, delta)
+	settlement.set_game(game)
+
+
+func _on_build(kind: String) -> void:
+	_report("Build", game.build(kind))
+
+
+func _on_set_reserve(good: String, lots: int) -> void:
+	game.set_reserve(good, lots)
+
+
+## Shows an error message if there is one, then refreshes.
+func _report(title_text: String, err: String) -> void:
+	if err != "":
+		_message(title_text, err)
 	_refresh()
 
 
@@ -326,13 +373,20 @@ func _build_ui() -> void:
 	root.add_child(body)
 
 	var left_scroll := ScrollContainer.new()
-	left_scroll.custom_minimum_size.x = 380
+	left_scroll.custom_minimum_size.x = 470
 	left_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	body.add_child(left_scroll)
 	settlement = SettlementPanel.new()
 	settlement.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left_scroll.add_child(settlement)
-	settlement.change_line.connect(func(i): line_dialog.open_for(game, i))
+	settlement.change_line.connect(func(i): goods_dialog.open_for_line(game, i))
+	settlement.add_line.connect(func(): goods_dialog.open_add_line(game))
+	settlement.show_goods.connect(func(): goods_dialog.open_overview(game))
+	settlement.upgrade_line.connect(_on_upgrade_line)
+	settlement.move_line.connect(_on_move_line)
+	settlement.build.connect(_on_build)
+	settlement.set_reserve.connect(_on_set_reserve)
+	settlement.stop_route.connect(_on_stop_route)
 	settlement.sell_home.connect(_on_sell_home)
 	settlement.plan_with_vehicle.connect(_on_plan_with_vehicle)
 	settlement.buy_vehicle.connect(_on_buy_vehicle)
@@ -352,14 +406,14 @@ func _build_ui() -> void:
 	center.add_child(status_label)
 
 	city_panel = CityPanel.new()
-	city_panel.custom_minimum_size.x = 540
+	city_panel.custom_minimum_size.x = 600
 	body.add_child(city_panel)
 	city_panel.plan_trip.connect(_on_plan_trip)
 	city_panel.sell_home.connect(_on_sell_home)
 	city_panel.show_prices.connect(_on_show_prices)
 
 	var tabs := TabContainer.new()
-	tabs.custom_minimum_size.y = 190
+	tabs.custom_minimum_size.y = 170
 	root.add_child(tabs)
 	news_list = ItemList.new()
 	news_list.name = "News"
@@ -369,19 +423,20 @@ func _build_ui() -> void:
 	tabs.add_child(finance)
 	tabs.tab_changed.connect(func(_i): _refresh())
 
-	planner = TripPlanner.new()
+	planner = RouteEditor.new()
 	add_child(planner)
-	planner.submitted.connect(_on_trip_submitted)
+	planner.submitted.connect(_on_route_submitted)
 	planner.preview_changed.connect(func(stops, vtype):
 		world_map.preview_stops = stops
 		world_map.preview_type = vtype
 		world_map.queue_redraw())
 
-	line_dialog = LineDialog.new()
-	add_child(line_dialog)
-	line_dialog.chosen.connect(_on_line_chosen)
-	line_dialog.canceled.connect(_on_line_dialog_closed)
-	line_dialog.confirmed.connect(_on_line_dialog_closed)
+	goods_dialog = GoodsDialog.new()
+	add_child(goods_dialog)
+	goods_dialog.line_chosen.connect(_on_line_chosen)
+	goods_dialog.line_added.connect(_on_line_added)
+	goods_dialog.canceled.connect(_on_line_dialog_closed)
+	goods_dialog.confirmed.connect(_on_line_dialog_closed)
 
 	sell_dialog = SellHomeDialog.new()
 	add_child(sell_dialog)

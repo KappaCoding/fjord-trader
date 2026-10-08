@@ -202,7 +202,7 @@ static func route(state: Dictionary, a: String, b: String) -> Dictionary:
 ## Fastest way from a to b using only one route type (a wagon can't sail, a barge can't
 ## cross open sea), possibly through other cities. Returns {"days": int, "stops": [ids from a to b]},
 ## or {"days": -1, "stops": []} when b can't be reached that way.
-static func best_path(state: Dictionary, a: String, b: String, route_type: String, vehicle := "") -> Dictionary:
+static func best_path(state: Dictionary, a: String, b: String, route_type: String, vehicle := "", speed_mult := 1.0) -> Dictionary:
 	var order: Array = state["city_order"]
 	var dist := {}
 	var prev := {}
@@ -223,7 +223,7 @@ static func best_path(state: Dictionary, a: String, b: String, route_type: Strin
 		for id in order:
 			if done.has(id) or id == current:
 				continue
-			var d := travel_days(state, current, id, route_type, vehicle)
+			var d := travel_days(state, current, id, route_type, vehicle, speed_mult)
 			if d > 0 and best + d < float(dist[id]):
 				dist[id] = best + d
 				prev[id] = current
@@ -236,7 +236,8 @@ static func best_path(state: Dictionary, a: String, b: String, route_type: Strin
 
 
 ## Travel time in whole days for one direct leg, or -1 if there is no direct route of that type.
-static func travel_days(state: Dictionary, a: String, b: String, route_type: String, vehicle := "") -> int:
+## `speed_mult` scales the vehicle's speed (roads make the player's wagons faster, DESIGN 3G).
+static func travel_days(state: Dictionary, a: String, b: String, route_type: String, vehicle := "", speed_mult := 1.0) -> int:
 	var r := route(state, a, b)
 	if r.is_empty():
 		return -1
@@ -246,8 +247,57 @@ static func travel_days(state: Dictionary, a: String, b: String, route_type: Str
 	var w: Dictionary = Data.balance()["world"]
 	if vehicle == "":
 		vehicle = w["route_vehicle"][route_type]
-	var speed := float(w["speed_units_per_day"][vehicle])
-	var days := int(ceil(units / speed))
+	var speed := float(w["speed_units_per_day"][vehicle]) * speed_mult
+	var days := int(ceil(units / speed - 1e-9))
 	if route_type == "ocean":
 		days += int(r["ocean_exit_days"])
 	return max(days, 1)
+
+
+# ------------------------------------------------------------------ what a site can produce (DESIGN 3H)
+
+const RAW_GOODS := ["Grain", "Fish", "Timber", "Wool", "Stone", "Salt", "Iron Ore", "Coal", "Wine"]
+
+const SITE_NEEDS := {
+	"Grain": "farmland (plains)",
+	"Fish": "a coast or fjord",
+	"Timber": "forest",
+	"Wool": "hills or plains for grazing",
+	"Stone": "mountains or hills",
+	"Salt": "an open coast or mountains",
+	"Iron Ore": "mountains",
+	"Coal": "mountains or hills",
+	"Wine": "a warm climate (the south, or temperate hills)",
+}
+
+
+static func is_raw(good: String) -> bool:
+	return RAW_GOODS.has(good)
+
+
+## Whether a city's land allows a raw good. Processed and import-only goods aren't about land.
+static func site_allows(city: Dictionary, good: String) -> bool:
+	var feats: Array = city["features"]
+	var mountains := feats.has("mountains")
+	var hills := feats.has("hills")
+	var plains := feats.has("plains")
+	match good:
+		"Grain":
+			return plains or (city["region"] == REGION_OVERSEAS and city["climate"] == "south")
+		"Fish":
+			return is_water_site(city["site"])
+		"Timber":
+			return feats.has("forest")
+		"Wool":
+			return hills or (plains and city["climate"] != "south")
+		"Stone":
+			return mountains or hills
+		"Salt":
+			return city["site"] == SITE_COAST or mountains
+		"Iron Ore":
+			return mountains
+		"Coal":
+			return mountains or hills
+		"Wine":
+			return city["climate"] == "south" or (city["climate"] == "temperate" and hills)
+	return true

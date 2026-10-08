@@ -11,7 +11,7 @@ const Transport := preload("res://engine/transport.gd")
 const News := preload("res://engine/news.gd")
 
 ## Bump when the state layout changes; older saves are refused rather than loaded wrongly.
-const STATE_VERSION := 2
+const STATE_VERSION := 3
 
 var state: Dictionary = {}
 var rng := RandomNumberGenerator.new()
@@ -43,16 +43,40 @@ func choose_line(index: int, good: String) -> String:
 	return Economy.set_line(state, state["home_id"], index, good)
 
 
+func add_line(good: String) -> String:
+	return Economy.add_line(state, state["home_id"], good)
+
+
+func upgrade_line(index: int) -> String:
+	return Economy.upgrade_line(state, state["home_id"], index)
+
+
+func move_line(index: int, delta: int) -> void:
+	Economy.move_line(state, state["home_id"], index, delta)
+
+
+func build(kind: String) -> String:
+	return Economy.build(state, state["home_id"], kind)
+
+
+func set_reserve(good: String, lots: int) -> void:
+	Economy.set_reserve(state, state["home_id"], good, lots)
+
+
 func sell_at_home(good: String, lots: int) -> Dictionary:
 	return Economy.sell_at_home(state, good, lots)
 
 
-func plan_trip(vehicle_id: String, dest: String, sell: Dictionary, buy: Dictionary) -> Dictionary:
-	return Transport.plan(state, vehicle_id, dest, sell, buy)
+func plan_route(vehicle_id: String, route: Dictionary) -> Dictionary:
+	return Transport.plan_route(state, vehicle_id, route)
 
 
-func send_trip(vehicle_id: String, dest: String, sell: Dictionary, buy: Dictionary) -> Dictionary:
-	return Transport.send(state, vehicle_id, dest, sell, buy)
+func send_route(vehicle_id: String, route: Dictionary) -> Dictionary:
+	return Transport.send_route(state, vehicle_id, route)
+
+
+func stop_route(vehicle_id: String, on := true) -> void:
+	Transport.set_stop_requested(state, vehicle_id, on)
 
 
 func buy_vehicle(vtype: String) -> String:
@@ -77,7 +101,7 @@ func net_worth() -> int:
 
 
 func forecast() -> Dictionary:
-	return Economy.forecast(state)
+	return Economy.forecast(state, Transport.committed_fees(state))
 
 
 func date_string() -> String:

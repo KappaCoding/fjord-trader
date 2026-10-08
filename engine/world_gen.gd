@@ -217,21 +217,19 @@ static func _pick(rng: RandomNumberGenerator, arr: Array) -> String:
 	return str(arr[rng.randi_range(0, arr.size() - 1)])
 
 
-## Home can produce whatever Tier 1 goods its site allows. Guarantee (DESIGN 2b-E):
+## Home can produce whatever Tier 1 raw goods its site allows (DESIGN 3H). Guarantee (DESIGN 2b-E):
 ## at least one food good and one other resource.
 static func _home_options(_rng: RandomNumberGenerator, home: Dictionary) -> Array:
-	var weights := Geo.production_weights(home, false)
 	var has_other := false
-	for id in weights:
-		if not Data.is_food(id):
+	for id in ["Timber", "Wool", "Stone", "Salt"]:
+		if Geo.site_allows(home, id):
 			has_other = true
 	if not has_other:
 		# Give the site some hills so it has a non-food resource (Wool or Stone).
 		home["features"].append("hills")
-		weights = Geo.production_weights(home, false)
 	var options: Array = []
 	for id in Data.good_ids():
-		if weights.has(id):
+		if Data.tier(id) == 1 and Geo.site_allows(home, id):
 			options.append(id)
 	return options
 

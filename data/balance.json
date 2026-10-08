@@ -23,10 +23,39 @@
 		"tax_share_per_month": 0.01,
 		"storage_share_per_month": 0.005,
 		"produced_goods_value_share": 0.75,
-		"line_output_per_month": 10,
+		"line_output_by_level": [10, 15, 20],
+		"line_upgrade_cost_factor": [2, 4],
 		"line_cost_by_tier": { "1": 500000, "2": 3000000, "3": 25000000, "4": 200000000 },
 		"retool_cost_share": 0.25,
-		"retool_days": 14
+		"retool_days_by_upgrades": [14, 12, 10, 7]
+	},
+	"growth": {
+		"food_goods": ["Grain", "Fish"],
+		"pop_per_food_lot": 2500,
+		"fed": 0.02,
+		"stock_months": 3,
+		"stock_bonus": 0.01,
+		"treasury_bonus": 0.01,
+		"treasury_threshold_stage_1": 1000000,
+		"infrastructure_bonus": 0.005,
+		"variety_bonus": 0.005,
+		"cap": 0.05,
+		"starving_after_days": 90,
+		"starving_decline": 0.02
+	},
+	"infrastructure": {
+		"order": ["housing", "harbor", "roads", "retooling"],
+		"types": {
+			"housing":   { "label": "Housing",          "first_stage": 1, "effect": "+15% people at once" },
+			"harbor":    { "label": "Harbor",           "first_stage": 1, "effect": "−10% water and sea fees" },
+			"roads":     { "label": "Roads",            "first_stage": 1, "effect": "+25% wagon speed" },
+			"retooling": { "label": "Retooling works",  "first_stage": 2, "effect": "Lines switch goods faster" }
+		},
+		"cost_by_stage": { "1": 1000000, "2": 10000000, "3": 100000000, "4": 1000000000 },
+		"retooling_cost_by_stage": { "2": 5000000, "3": 50000000, "4": 500000000 },
+		"housing_pop_jump": 0.15,
+		"roads_wagon_speed": 0.25,
+		"harbor_fee_cut": 0.10
 	},
 	"vehicles": {
 		"upkeep_share_per_month": 0.02,

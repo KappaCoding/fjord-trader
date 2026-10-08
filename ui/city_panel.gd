@@ -168,13 +168,13 @@ func _refresh_header(c: Dictionary, home: bool) -> void:
 	lines.append(title)
 	lines.append("[color=#%s]%s · %s · %s climate · population %s[/color]" % [
 		Style.hex(Style.MUTED), String(c["culture"]).capitalize(), site, c["climate"], Fmt.coins(int(c["pop"]))])
-	var produces: Array = c["production_options"] if home else c["produces"]
-	lines.append("%s: [color=#%s]%s[/color]" % ["Can produce" if home else "Produces", Style.hex(Style.SURPLUS), ", ".join(PackedStringArray(produces))])
+	var produces: Array = Economy.producible_goods(c) if home else c["produces"]
+	lines.append("%s: [color=#%s]%s[/color]" % ["Can produce now" if home else "Produces", Style.hex(Style.SURPLUS), ", ".join(PackedStringArray(produces))])
 	var days_left := ceili(float(c["want_timer_hours"]) / 24.0)
 	lines.append("Wants: [color=#%s]%s[/color]  [color=#%s](changes in %s)[/color]" % [
 		Style.hex(Style.WANT), ", ".join(PackedStringArray(c["wants"])), Style.hex(Style.MUTED), Style.days(days_left)])
 	if home:
-		lines.append("[color=#%s]Your home market buys at 75%% of normal prices and sells nothing yet.[/color]" % Style.hex(Style.MUTED))
+		lines.append("[color=#%s]Your home market buys at 75%% of normal prices and sells nothing yet. See Production → What can I make? for everything else.[/color]" % Style.hex(Style.MUTED))
 	_header.text = "\n".join(lines)
 
 

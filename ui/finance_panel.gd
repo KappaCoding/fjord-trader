@@ -46,8 +46,8 @@ func refresh() -> void:
 	lines.append("[b]Running costs right now[/b]  [color=#%s](per month, charged continuously)[/color]" % muted)
 	lines.append("Vehicle upkeep  %s   ·   Tax  %s   ·   Storage  %s" % [Fmt.coins(f["upkeep"]), Fmt.coins(f["tax"]), Fmt.coins(f["storage"])])
 	lines.append("Total  [b]%s / month[/b]  ≈ %s / day" % [Fmt.coins(f["per_month"]), Fmt.coins(f["per_day"])])
-	if int(f["committed_return_fees"]) > 0:
-		lines.append("Already committed: %s in return-trip fees" % Fmt.coins(f["committed_return_fees"]))
+	if int(f["committed_fees"]) > 0:
+		lines.append("Already committed: %s in fees for legs your vehicles still have to travel" % Fmt.coins(f["committed_fees"]))
 	var runway := int(f["runway_days"])
 	if runway >= 0:
 		var col := Style.GOOD if runway > 90 else (Style.WARN if runway > 30 else Style.BAD)

@@ -10,6 +10,7 @@ it isn't decided yet — ask, don't improvise.
 - Engine: **Godot 4.7.x, Standard version** (no .NET), language **GDScript**.
 - Presentation: **interactive dashboard** (tables, panels, buttons) with a **schematic world map** that shows which
   vehicle reaches which city and how (added in Milestone 2 at Ludvig's request). Visual polish is a later phase.
+- Resolution: laid out for **1920×1080**, scaled to the window (starts maximized; F11 toggles fullscreen).
 - **Real-time strategy, not turn-based** (overrides the original ruleset's turn structure). Exact time model is in Batch 2b.
 - Architecture:
   - `engine/` — pure rules logic, no UI. The simulation advances in fixed ticks: `tick(state, commands) -> new_state + log`.
@@ -163,6 +164,13 @@ The vehicle **returns home automatically** and unloads into the warehouse.
 - Until emergency loans exist (Milestone 6), running costs can push the treasury below zero; purchases, fees for
   new trips and investments are refused if the treasury can't pay.
 
+**2c-F. Multi-stop routes** ✅ (replaces the single-destination planner; decided after the Milestone 2 playtest)
+One editor builds a journey: **load goods at home → any number of stops, each with goods to sell and goods to buy
+→ back home**, where everything on board is unloaded. Run it **once**, or tick **Repeat** to make it a standing
+trade route (1E). Each sell or buy can have a lot cap and a price limit (2A); stops whose limits aren't met are
+skipped and logged. Loading at home respects the warehouse reserves (5E). Stopping a repeating route lets it finish
+the current loop. Each route reports its cash result and its profit against cost per loop.
+
 ### Batch 3 — Population, food and growth ✅
 
 **3A. Food** ✅
@@ -188,9 +196,40 @@ purchase price, the second **4×** (starting Tier 1 lines count as 500,000, so 1
 **3D. Stages never regress** ✅
 A city that falls below its stage's population threshold keeps its stage and its lines.
 
-**3E. NPC cities grow and shrink** ✅
+**3E. NPC cities grow and shrink** ✅ (built in Milestone 5 together with NPC trade, since it depends on it)
 NPC city populations change slowly based on how well their wants are supplied (by the player or NPC routes).
 Population feeds back into price-impact step size (1B) and how many NPC routes the city runs (2B).
+**3F. Housing gives a population jump** ✅ (decided after the Milestone 2 playtest)
+Growth rates stay as in 3B. In addition, each **housing** upgrade adds **+15% population at once**, so investing
+speeds the climb to the next stage noticeably. The settlement panel shows the growth rate, what boosts or blocks it,
+and an estimate of when the next stage is reached.
+
+**3G. Infrastructure** ✅
+One **housing**, **harbor** and **roads** upgrade can be built per stage (so up to 1 of each at Stage 1, 2 at Stage 2,
+and so on), each costing the current stage's price: **1M / 10M / 100M / 1B**. Each gives +0.5% growth (3B).
+- Housing: +15% population at once (3F).
+- Roads: **+25% wagon speed** per upgrade, stacking.
+- Harbor: **−10% sheltered-water and ocean trip fees** per upgrade, stacking.
+- The retooling upgrade (5D) is bought the same way, one per stage from Stage 2.
+
+**3H. What your own cities can produce** ✅
+- **Raw goods** depend on the city's site: Grain needs plains, Fish a coast or fjord, Timber forest, Wool hills or
+  plains, Stone mountains or hills, Salt an open coast or mountains, Iron Ore mountains, Coal mountains or hills,
+  Wine a warm climate (the south, or temperate hills).
+- **Processed goods** (Cloth, Steel, Glass, Furniture, Tools, Machinery, Ships, Jewelry, Medicine) can be made
+  anywhere, given their inputs.
+- **Tier N unlocks at Stage N.** Spices and Gold are import-only.
+- The UI lists every good with whether you can make it and, if not, why.
+
+**3I. Lines and tiers** ✅
+- New lines cost the tier price of the good they make (Tier 1 500,000 · Tier 2 3M · Tier 3 25M · Tier 4 200M), up to
+  the stage's line limit. A new line starts producing at once.
+- Any line can switch to any unlocked good. Moving **up a tier** costs the **price difference** between the tiers plus
+  normal retooling (25% of the line's current price, 14 days). Moving down costs only retooling; nothing is refunded.
+- An unassigned line's first choice is free (moving it above its tier still costs the difference).
+- Upgrades (3C) cost 2× and 4× the line's current tier price.
+- Line order is the input priority (5E): lines higher in the list take shared inputs first.
+
 ### Batch 4 — Money: taxes, loans, net worth ✅
 
 **4A. Net worth** ✅

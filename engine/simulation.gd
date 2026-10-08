@@ -18,8 +18,8 @@ static func advance(state: Dictionary, rng: RandomNumberGenerator, hours: int) -
 		_step_hour(state, rng)
 
 
-## One hour, always in the same order (determinism): markets, production, vehicles,
-## running costs, month rollover, want changes.
+## One hour, always in the same order (determinism): markets, production, food and growth,
+## vehicles, running costs, month rollover, want changes.
 static func _step_hour(state: Dictionary, rng: RandomNumberGenerator) -> void:
 	var t := int(state["time_hours"]) + 1
 	state["time_hours"] = t
@@ -30,6 +30,7 @@ static func _step_hour(state: Dictionary, rng: RandomNumberGenerator) -> void:
 		Market.step_market(cities[id], 1)
 	for id in Economy.player_city_ids(state):
 		Economy.step_production(state, cities[id], 1)
+		Economy.step_food_growth(state, cities[id], 1)
 	Transport.step_vehicles(state)
 	Economy.step_costs(state, 1)
 

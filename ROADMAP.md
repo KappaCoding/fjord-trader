@@ -6,9 +6,9 @@ Each milestone ends with something you can open and run in Godot. Rules come fro
 |---|---|---|
 | 1 ✅ | **Foundation** | Generate a world from a seed and watch its markets live: cities, names, routes, prices drifting in real time, pause and 1×/2×/4× speed, save/load. |
 | 2 ✅ | **First playable** | Pick your two home lines, produce, buy and sell, send wagons and barges on one-off trips, pay upkeep, tax and storage; see everything in the forecast panel. |
-| 3 | **Growing the city** | Food, population growth, stages, infrastructure, line upgrades, retooling, input priority and reserves. |
-| 4 | **Trade routes** | Set up repeating routes with price limits and lot caps; see profit per route. |
-| 5 | **A living world** | Visible NPC routes, NPC cities growing and shrinking, NPC sales into your home market, buy offers with the inbox and auto-pause. |
+| 3 ✅ | **Growing the city** | Food, population growth, stages, infrastructure, line upgrades, retooling, input priority and reserves. |
+| 4 ✅ | **Trade routes** | Set up repeating routes with price limits and lot caps; see profit per route. |
+| 5 | **A living world** | Visible NPC routes, NPC cities growing and shrinking (3E), NPC sales into your home market, buy offers with the inbox and auto-pause. |
 | 6 | **Money** | Loans, emergency credit, default, cost-basis net worth, victory screen. |
 | 7 | **Risk and events** | Storms, freezing, mud, insurance; festivals and delivery contracts with the news feed. |
 | 8 | **The wider world** | Tier 2–4 production chains, coastal vessels, shipyard and ocean ships, building Ships, founding new cities (needs design review first). |
@@ -49,7 +49,24 @@ Notes from building it:
 - Retooling (planned for Milestone 3) was pulled forward so production can be changed.
 - Saves from Milestone 1 can't be loaded (the state layout changed); the game says so instead of breaking.
 
-## Milestone 3 — Growing the city (next)
+## Milestones 3 and 4 — Growing the city, trade routes ✅ (done together after the Milestone 2 playtest)
 
-Food consumption, population growth and stages, infrastructure, line upgrades, retooling upgrades, input priority
-and reserves.
+- Food consumption, growth (rates, bonuses, cap, starvation), stages, a growth breakdown with time to next stage.
+- Infrastructure: housing (+15% people at once), harbor (−10% water fees), roads (+25% wagon speed),
+  retooling works; one of each per stage.
+- Production access by site and stage, with a "What can I make?" overview explaining every good.
+- Add lines, upgrade lines (15 and 20 lots/month), switch lines between tiers (pay the difference),
+  input priority (line order), processed goods consume inputs and wait when they run out, warehouse reserves.
+- Multi-stop routes: load at home, any number of stops with sell/buy, lot caps and price limits, run once or
+  repeat; stop after the current loop; per-loop cash and profit against cost; committed fees in the forecast.
+- 1920×1080 layout, scaled to the window; F11 fullscreen.
+- 223 headless engine tests.
+
+Notes:
+- NPC city growth (3E) moved to Milestone 5, since it depends on NPC trade.
+- Saves from Milestone 2 can't be loaded (state layout changed).
+
+## Milestone 5 — A living world (next)
+
+NPC trade routes with visible vehicles, NPC deliveries into your home market (so you can buy at home),
+NPC buy offers with an inbox and auto-pause, NPC cities growing and shrinking with supply.

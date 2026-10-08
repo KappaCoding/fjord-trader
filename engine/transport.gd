@@ -1,10 +1,16 @@
-## Vehicles and trips. See DESIGN.md 2D, 5B, 5C and 2c (trading in real time).
+## Vehicles and routes. See DESIGN.md 2D, 5B, 5C, 2c and 2c-F (multi-stop routes).
 ##
-## A vehicle: {id, name, type, capacity, value, location, cargo, trip}
+## A vehicle: {id, name, type, capacity, value, location, cargo, route, leg, loop, stats, stop_requested, last_route}
 ##   location — city id while parked, "" while travelling
 ##   cargo    — stock container {good: {lots, cost}}
-##   trip     — {} when idle, otherwise:
-##     {dest, path, hop_days, days, buy, phase ("out"|"back"), leg_start, leg_end, fee_back, result}
+##   route    — {} when idle, otherwise the route it runs (see below)
+##   leg      — {} when parked, otherwise {from, to, path, hop_days, days, start, end, next}
+##              next = index of the stop being travelled to, or -1 when heading home
+##   loop     — this loop's books {n, sales, sold_cost, purchases, fees}
+##   stats    — {loops, last_cash, last_profit, total_profit}
+##
+## A route: {load: {good: lots}, stops: [{city, sell: {good: {lots, min}}, buy: {good: {lots, max}}}], repeat}
+##   sell lots -1 = everything of that good on board; min / max = price limit per lot, 0 = none.
 extends RefCounted
 
 const Data := preload("res://engine/data.gd")
@@ -58,7 +64,12 @@ static func _new_vehicle(state: Dictionary, vtype: String) -> Dictionary:
 		"value": int(info["price"]),
 		"location": state["home_id"],
 		"cargo": {},
-		"trip": {},
+		"route": {},
+		"leg": {},
+		"loop": {},
+		"stats": {"loops": 0, "last_cash": 0, "last_profit": 0, "total_profit": 0},
+		"stop_requested": false,
+		"last_route": {},
 	}
 
 
@@ -92,7 +103,7 @@ static func vehicle(state: Dictionary, id: String) -> Dictionary:
 
 
 static func is_idle_at_home(state: Dictionary, v: Dictionary) -> bool:
-	return v["trip"].is_empty() and v["location"] == state["home_id"]
+	return v["route"].is_empty() and v["leg"].is_empty() and v["location"] == state["home_id"]
 
 
 static func idle_vehicles(state: Dictionary) -> Array:
@@ -103,15 +114,21 @@ static func idle_vehicles(state: Dictionary) -> Array:
 	return out
 
 
-# ------------------------------------------------------------------ reach
+# ------------------------------------------------------------------ reach and fees
 
-## Fastest way for a vehicle type from one city to another: {"days", "stops", "hop_days"}.
+## The player's speed bonus for a vehicle type (roads speed up wagons, DESIGN 3G).
+static func speed_mult(state: Dictionary, vtype: String) -> float:
+	return Economy.wagon_speed_mult(state) if route_of(vtype) == "land" else 1.0
+
+
+## Fastest way for a vehicle type between two cities: {"days", "stops", "hop_days"}.
 static func path_for(state: Dictionary, from_id: String, to_id: String, vtype: String) -> Dictionary:
-	var p := Geo.best_path(state, from_id, to_id, route_of(vtype), vtype)
+	var mult := speed_mult(state, vtype)
+	var p := Geo.best_path(state, from_id, to_id, route_of(vtype), vtype, mult)
 	var hops: Array = []
 	var stops: Array = p["stops"]
 	for i in range(1, stops.size()):
-		hops.append(Geo.travel_days(state, stops[i - 1], stops[i], route_of(vtype), vtype))
+		hops.append(Geo.travel_days(state, stops[i - 1], stops[i], route_of(vtype), vtype, mult))
 	p["hop_days"] = hops
 	return p
 
@@ -129,14 +146,17 @@ static func reachable(state: Dictionary, from_id: String, vtype: String) -> Arra
 	return out
 
 
-static func trip_fee(vtype: String, days: int) -> int:
+## Fee for one leg (DESIGN 2c-C), less the harbor discount on water (DESIGN 3G).
+static func trip_fee(state: Dictionary, vtype: String, days: int) -> int:
 	var per_month := float(type_info(vtype)["fee_per_month_of_travel"])
-	return int(round(per_month * float(days) / float(Data.balance()["clock"]["days_per_month"])))
+	var fee := per_month * float(days) / float(Data.balance()["clock"]["days_per_month"])
+	if route_of(vtype) != "land":
+		fee *= Economy.water_fee_mult(state)
+	return int(round(fee))
 
 
-## Where each city's goods can be sold, best price first, with how your vehicles get there.
-## [{city, price (first lot paid to you), band, reach: [{type, days}]}] — reach is empty if no vehicle you
-## own can get there.
+## Where a good sells best, best price first, with how your vehicles get there.
+## [{city, price (first lot paid to you), band, reach: [{type, days}]}]
 static func sell_options(state: Dictionary, good: String) -> Array:
 	var home_id: String = state["home_id"]
 	var owned := {}
@@ -162,176 +182,347 @@ static func sell_options(state: Dictionary, good: String) -> Array:
 	return out
 
 
-# ------------------------------------------------------------------ trips
+# ------------------------------------------------------------------ routes
 
-## Checks and estimates a trip without changing anything. `sell` and `buy` map good -> lots.
-## Returns {errors, warnings, days, stops, fee_out, fee_back, arrive_t, home_t, sell_lines, buy_lines,
-## sell_total, sell_profit, buy_total, cargo_out, cargo_back, capacity, net}.
-static func plan(state: Dictionary, vehicle_id: String, dest: String, sell: Dictionary, buy: Dictionary) -> Dictionary:
+## A clean copy of a route: integer quantities, zero entries dropped.
+static func normalize_route(route: Dictionary) -> Dictionary:
+	var to_load := {}
+	for g in route.get("load", {}):
+		if int(route["load"][g]) > 0:
+			to_load[g] = int(route["load"][g])
+	var stops: Array = []
+	for st in route.get("stops", []):
+		var sell := {}
+		for g in st.get("sell", {}):
+			var e: Dictionary = st["sell"][g]
+			if int(e.get("lots", 0)) != 0:
+				sell[g] = {"lots": int(e["lots"]), "min": maxi(0, int(e.get("min", 0)))}
+		var buy := {}
+		for g in st.get("buy", {}):
+			var e: Dictionary = st["buy"][g]
+			if int(e.get("lots", 0)) > 0:
+				buy[g] = {"lots": int(e["lots"]), "max": maxi(0, int(e.get("max", 0)))}
+		stops.append({"city": String(st.get("city", "")), "sell": sell, "buy": buy})
+	return {"load": to_load, "stops": stops, "repeat": bool(route.get("repeat", false))}
+
+
+static func route_names(state: Dictionary, route: Dictionary) -> String:
+	var names: PackedStringArray = []
+	for st in route.get("stops", []):
+		if state["cities"].has(st["city"]):
+			names.append(state["cities"][st["city"]]["name"])
+	return " → ".join(names)
+
+
+## Checks and estimates a route without changing anything (prices as of now).
+## {errors, warnings, legs: [{from, to, days, fee, stops}], stops: [{city, onboard, sells, buys}],
+##  days, fees, sales, sales_profit, purchases, cash, profit, load_lots, first_arrival_t, home_t, full_path, capacity}
+static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictionary) -> Dictionary:
+	var route := normalize_route(route_in)
 	var r := {
-		"errors": [], "warnings": [], "days": -1, "stops": [], "fee_out": 0, "fee_back": 0,
-		"arrive_t": -1, "home_t": -1, "sell_lines": [], "buy_lines": [], "sell_total": 0,
-		"sell_profit": 0, "buy_total": 0, "cargo_out": 0, "cargo_back": 0, "capacity": 0, "net": 0,
+		"errors": [], "warnings": [], "legs": [], "stops": [], "days": 0, "fees": 0, "sales": 0,
+		"sales_profit": 0, "purchases": 0, "cash": 0, "profit": 0, "load_lots": 0,
+		"first_arrival_t": -1, "home_t": -1, "full_path": [], "capacity": 0,
 	}
 	var v := vehicle(state, vehicle_id)
 	if v.is_empty():
 		r["errors"].append("Choose a vehicle.")
 		return r
-	r["capacity"] = int(v["capacity"])
+	var cap := int(v["capacity"])
+	r["capacity"] = cap
 	var home_id: String = state["home_id"]
+	var home: Dictionary = Economy.home(state)
 	if not is_idle_at_home(state, v):
-		r["errors"].append("%s is away on a trip." % v["name"])
-	if not state["cities"].has(dest) or dest == home_id:
-		r["errors"].append("Choose a destination.")
+		r["errors"].append("%s is busy." % v["name"])
+	var stops: Array = route["stops"]
+	if stops.is_empty():
+		r["errors"].append("Add at least one stop.")
 		return r
-	var dest_name: String = state["cities"][dest]["name"]
-	var path := path_for(state, home_id, dest, v["type"])
-	var days := int(path["days"])
-	if days <= 0:
-		r["errors"].append("%s can't reach %s: there is no %s route." % [v["name"], dest_name, ROUTE_WORDS[route_of(v["type"])]])
-		return r
+	for i in stops.size():
+		var c: String = stops[i]["city"]
+		if not state["cities"].has(c) or c == home_id:
+			r["errors"].append("Stop %d: choose a city other than home." % (i + 1))
+			return r
+		if i > 0 and c == stops[i - 1]["city"]:
+			r["errors"].append("Stop %d is the same city as the stop before it." % (i + 1))
+
+	# Legs: home → stops → home
+	var seq: Array = [home_id]
+	for st in stops:
+		seq.append(st["city"])
+	seq.append(home_id)
+	var full: Array = [home_id]
+	for i in range(1, seq.size()):
+		var p := path_for(state, seq[i - 1], seq[i], v["type"])
+		var days := int(p["days"])
+		if days <= 0:
+			r["errors"].append("%s can't travel from %s to %s: there is no %s route." % [
+				v["name"], state["cities"][seq[i - 1]]["name"], state["cities"][seq[i]]["name"], ROUTE_WORDS[route_of(v["type"])]])
+			continue
+		var fee := trip_fee(state, v["type"], days)
+		r["legs"].append({"from": seq[i - 1], "to": seq[i], "days": days, "fee": fee, "stops": p["stops"]})
+		r["days"] = int(r["days"]) + days
+		r["fees"] = int(r["fees"]) + fee
+		var ps: Array = p["stops"]
+		for k in range(1, ps.size()):
+			full.append(ps[k])
+	r["full_path"] = full
 	var t := int(state["time_hours"])
-	r["days"] = days
-	r["stops"] = path["stops"]
-	r["fee_out"] = trip_fee(v["type"], days)
-	r["fee_back"] = trip_fee(v["type"], days)
-	r["arrive_t"] = t + days * 24
-	r["home_t"] = t + 2 * days * 24
+	if not r["legs"].is_empty():
+		r["first_arrival_t"] = t + int(r["legs"][0]["days"]) * 24
+	r["home_t"] = t + int(r["days"]) * 24
 
-	var wh: Dictionary = Economy.home(state)["warehouse"]
-	for good in Data.good_ids():
-		var n := int(sell.get(good, 0))
+	# Cargo simulation
+	var onboard := {}  # good -> {lots, cost}
+	var wh: Dictionary = home["warehouse"]
+	var anything := false
+	for g in Data.good_ids():
+		var n := int(route["load"].get(g, 0))
 		if n <= 0:
 			continue
-		var have := Economy.stock(wh, good)
-		if n > have:
-			r["errors"].append("You only have %d lots of %s." % [have, good])
-			n = have
-		var revenue := Economy.sum(Market.sell_lot_prices(state, dest, good, n))
-		var cost := Economy.cost_of(wh, good, n)
-		r["sell_lines"].append({"good": good, "lots": n, "revenue": revenue, "cost": cost, "profit": revenue - cost})
-		r["sell_total"] = int(r["sell_total"]) + revenue
-		r["sell_profit"] = int(r["sell_profit"]) + revenue - cost
-		r["cargo_out"] = int(r["cargo_out"]) + n
-	for good in Data.good_ids():
-		var n := int(buy.get(good, 0))
-		if n <= 0:
-			continue
-		if not Market.city_sells(state, dest, good):
-			r["errors"].append("%s doesn't sell %s." % [dest_name, good])
-			continue
-		var cost := Economy.sum(Market.buy_lot_prices(state, dest, good, n))
-		r["buy_lines"].append({"good": good, "lots": n, "cost": cost})
-		r["buy_total"] = int(r["buy_total"]) + cost
-		r["cargo_back"] = int(r["cargo_back"]) + n
+		anything = true
+		var avail := Economy.available_for_load(home, g)
+		if n > avail:
+			var res := Economy.reserve(home, g)
+			if res > 0:
+				r["errors"].append("Only %d lots of %s can be loaded (you keep %d in reserve)." % [avail, g, res])
+			else:
+				r["errors"].append("You only have %d lots of %s." % [avail, g])
+			n = avail
+		Economy.add_stock(onboard, g, n, Economy.cost_of(wh, g, n))
+		r["load_lots"] = int(r["load_lots"]) + n
+	if int(r["load_lots"]) > cap:
+		r["errors"].append("Too much to load: %d lots, but %s carries %d." % [r["load_lots"], v["name"], cap])
 
-	if int(r["cargo_out"]) > int(v["capacity"]):
-		r["errors"].append("Too much cargo: %d lots, but %s carries %d." % [r["cargo_out"], v["name"], v["capacity"]])
-	if int(r["cargo_back"]) > int(v["capacity"]):
-		r["errors"].append("Too much to buy: %d lots, but %s carries %d." % [r["cargo_back"], v["name"], v["capacity"]])
-	if int(r["cargo_out"]) == 0 and int(r["cargo_back"]) == 0:
-		r["errors"].append("Load something to sell or choose something to buy.")
-	if not Economy.can_afford(state, int(r["fee_out"])):
-		r["errors"].append("Not enough money for the trip fee (%s)." % Fmt.coins(r["fee_out"]))
-	var cash_on_arrival := int(state["treasury"]) - int(r["fee_out"]) + int(r["sell_total"])
-	if int(r["buy_total"]) > cash_on_arrival:
-		r["warnings"].append("You may not be able to pay for everything; on arrival the vehicle buys what it can afford.")
-	r["net"] = int(r["sell_total"]) - int(r["buy_total"]) - int(r["fee_out"]) - int(r["fee_back"])
+	var sold_cost_total := 0
+	for i in stops.size():
+		var st: Dictionary = stops[i]
+		var c: String = st["city"]
+		var cname: String = state["cities"][c]["name"]
+		var est := {"city": c, "onboard": {}, "sells": [], "buys": []}
+		for g in onboard:
+			est["onboard"][g] = int(onboard[g]["lots"])
+		for g in Data.good_ids():
+			if not st["sell"].has(g):
+				continue
+			anything = true
+			var want := int(st["sell"][g]["lots"])
+			var limit := int(st["sell"][g]["min"])
+			var have := Economy.stock(onboard, g)
+			var n := have if want < 0 else mini(want, have)
+			if n <= 0:
+				r["warnings"].append("Stop %d (%s): no %s on board to sell." % [i + 1, cname, g])
+				continue
+			var prices := Market.sell_lot_prices(state, c, g, n)
+			var k := 0
+			var revenue := 0
+			for price in prices:
+				if limit > 0 and int(price) < limit:
+					break
+				revenue += int(price)
+				k += 1
+			if k < n:
+				r["warnings"].append("Stop %d (%s): at today's prices only %d of %d %s sell above your minimum." % [i + 1, cname, k, n, g])
+			var cost := Economy.remove_stock(onboard, g, k)
+			sold_cost_total += cost
+			est["sells"].append({"good": g, "lots": k, "revenue": revenue, "profit": revenue - cost})
+			r["sales"] = int(r["sales"]) + revenue
+		for g in Data.good_ids():
+			if not st["buy"].has(g):
+				continue
+			anything = true
+			if not Market.city_sells(state, c, g):
+				r["errors"].append("Stop %d: %s doesn't sell %s." % [i + 1, cname, g])
+				continue
+			var want := int(st["buy"][g]["lots"])
+			var limit := int(st["buy"][g]["max"])
+			var room := cap - Economy.total_lots(onboard)
+			if want > room:
+				r["errors"].append("Stop %d (%s): no room for %d %s — only %d lots free." % [i + 1, cname, want, g, room])
+			var n := mini(want, maxi(0, room))
+			var prices := Market.buy_lot_prices(state, c, g, n)
+			var k := 0
+			var cost := 0
+			for price in prices:
+				if limit > 0 and int(price) > limit:
+					break
+				cost += int(price)
+				k += 1
+			if k < n:
+				r["warnings"].append("Stop %d (%s): at today's prices only %d of %d %s cost less than your maximum." % [i + 1, cname, k, n, g])
+			Economy.add_stock(onboard, g, k, cost)
+			est["buys"].append({"good": g, "lots": k, "cost": cost})
+			r["purchases"] = int(r["purchases"]) + cost
+		r["stops"].append(est)
+
+	if not anything:
+		r["errors"].append("Give the vehicle something to do: load goods to sell, or choose goods to buy.")
+	if not r["legs"].is_empty() and not Economy.can_afford(state, int(r["legs"][0]["fee"])):
+		r["errors"].append("Not enough money for the first leg's fee (%s)." % Fmt.coins(r["legs"][0]["fee"]))
+	if int(r["purchases"]) > int(state["treasury"]) + int(r["sales"]) - int(r["fees"]):
+		r["warnings"].append("You may not be able to pay for every purchase; the vehicle buys what it can afford.")
+	r["cash"] = int(r["sales"]) - int(r["purchases"]) - int(r["fees"])
+	r["sales_profit"] = int(r["sales"]) - sold_cost_total
+	r["profit"] = int(r["sales_profit"]) - int(r["fees"])
 	return r
 
 
-## Sends a vehicle on a trip. Returns the plan; check plan["errors"].
-static func send(state: Dictionary, vehicle_id: String, dest: String, sell: Dictionary, buy: Dictionary) -> Dictionary:
-	var p := plan(state, vehicle_id, dest, sell, buy)
+## Sends a vehicle on a route. Returns the plan; check plan["errors"].
+static func send_route(state: Dictionary, vehicle_id: String, route_in: Dictionary) -> Dictionary:
+	var p := plan_route(state, vehicle_id, route_in)
 	if not p["errors"].is_empty():
 		return p
 	var v := vehicle(state, vehicle_id)
-	var wh: Dictionary = Economy.home(state)["warehouse"]
-	var loaded: Array = []
-	for line in p["sell_lines"]:
-		var cost := Economy.remove_stock(wh, line["good"], line["lots"])
-		Economy.add_stock(v["cargo"], line["good"], line["lots"], cost)
-		loaded.append([line["good"], line["lots"]])
-	var to_buy := {}
-	for line in p["buy_lines"]:
-		to_buy[line["good"]] = int(line["lots"])
-	Economy.spend(state, "trip_fees", int(p["fee_out"]))
-	var t := int(state["time_hours"])
-	var path := path_for(state, state["home_id"], dest, v["type"])
-	v["location"] = ""
-	v["trip"] = {
-		"dest": dest,
-		"path": path["stops"],
-		"hop_days": path["hop_days"],
-		"days": int(p["days"]),
-		"buy": to_buy,
-		"phase": "out",
-		"leg_start": t,
-		"leg_end": t + int(p["days"]) * 24,
-		"fee_back": int(p["fee_back"]),
-		"result": {},
-	}
-	var cargo_text := Fmt.lots_list(loaded) if not loaded.is_empty() else "no cargo"
-	News.add(state, "%s left for %s (%d days) with %s." % [
-		v["name"], state["cities"][dest]["name"], p["days"], cargo_text], News.KIND_TRADE)
+	v["route"] = normalize_route(route_in)
+	v["stop_requested"] = false
+	_start_loop(state, v)
 	return p
+
+
+## Asks a vehicle on a repeating route to stop after the current loop (or cancels that request).
+static func set_stop_requested(state: Dictionary, vehicle_id: String, on: bool) -> void:
+	var v := vehicle(state, vehicle_id)
+	if not v.is_empty() and not v["route"].is_empty():
+		v["stop_requested"] = on
+
+
+static func _start_loop(state: Dictionary, v: Dictionary) -> void:
+	var route: Dictionary = v["route"]
+	var home: Dictionary = Economy.home(state)
+	var wh: Dictionary = home["warehouse"]
+	v["loop"] = {"n": int(v["stats"]["loops"]) + 1, "sales": 0, "sold_cost": 0, "purchases": 0, "fees": 0}
+	var loaded: Array = []
+	var short: PackedStringArray = []
+	for g in Data.good_ids():
+		var want := int(route["load"].get(g, 0))
+		if want <= 0:
+			continue
+		var room := int(v["capacity"]) - Economy.total_lots(v["cargo"])
+		var n := mini(want, mini(Economy.available_for_load(home, g), room))
+		if n > 0:
+			var cost := Economy.remove_stock(wh, g, n)
+			Economy.add_stock(v["cargo"], g, n, cost)
+			loaded.append([g, n])
+		if n < want:
+			short.append("%d of %d %s" % [n, want, g])
+	var text := "%s sets out%s: %s → %s → %s, carrying %s." % [
+		v["name"], " (loop %d)" % v["loop"]["n"] if route["repeat"] else "",
+		home["name"], route_names(state, route), home["name"],
+		Fmt.lots_list(loaded) if not loaded.is_empty() else "nothing yet"]
+	if not short.is_empty():
+		text += " Only loaded %s." % ", ".join(short)
+	News.add(state, text, News.KIND_TRADE)
+	_depart(state, v, state["home_id"], route["stops"][0]["city"], 0)
+
+
+static func _depart(state: Dictionary, v: Dictionary, from_id: String, to_id: String, next_index: int) -> void:
+	var p := path_for(state, from_id, to_id, v["type"])
+	var days := maxi(1, int(p["days"]))
+	var fee := trip_fee(state, v["type"], days)
+	Economy.spend(state, "trip_fees", fee)
+	v["loop"]["fees"] = int(v["loop"]["fees"]) + fee
+	var t := int(state["time_hours"])
+	v["location"] = ""
+	v["leg"] = {
+		"from": from_id, "to": to_id, "path": p["stops"], "hop_days": p["hop_days"], "days": days,
+		"start": t, "end": t + days * 24, "next": next_index,
+	}
 
 
 static func step_vehicles(state: Dictionary) -> void:
 	var t := int(state["time_hours"])
 	for v in state["vehicles"]:
-		var trip: Dictionary = v["trip"]
-		if trip.is_empty() or t < int(trip["leg_end"]):
+		var leg: Dictionary = v["leg"]
+		if leg.is_empty() or t < int(leg["end"]):
 			continue
-		if trip["phase"] == "out":
-			_arrive_abroad(state, v)
-		else:
+		var next := int(leg["next"])
+		var to: String = leg["to"]
+		v["location"] = to
+		v["leg"] = {}
+		if next < 0:
 			_arrive_home(state, v)
+			continue
+		_trade_at_stop(state, v, next)
+		var stops: Array = v["route"]["stops"]
+		if next + 1 < stops.size():
+			_depart(state, v, to, stops[next + 1]["city"], next + 1)
+		else:
+			_depart(state, v, to, state["home_id"], -1)
 
 
-static func _arrive_abroad(state: Dictionary, v: Dictionary) -> void:
-	var trip: Dictionary = v["trip"]
-	var dest: String = trip["dest"]
-	var dest_name: String = state["cities"][dest]["name"]
+static func _trade_at_stop(state: Dictionary, v: Dictionary, index: int) -> void:
+	var st: Dictionary = v["route"]["stops"][index]
+	var c: String = st["city"]
+	var cname: String = state["cities"][c]["name"]
+	var loop: Dictionary = v["loop"]
 	var sold: Array = []
 	var sales := 0
 	var sold_cost := 0
-	for good in Data.good_ids():
-		var n := Economy.stock(v["cargo"], good)
+	var notes: PackedStringArray = []
+	for g in Data.good_ids():
+		if not st["sell"].has(g):
+			continue
+		var want := int(st["sell"][g]["lots"])
+		var limit := int(st["sell"][g]["min"])
+		var have := Economy.stock(v["cargo"], g)
+		var n := have if want < 0 else mini(want, have)
 		if n <= 0:
 			continue
-		var revenue := Economy.sum(Market.sell_lot_prices(state, dest, good, n))
-		sold_cost += Economy.remove_stock(v["cargo"], good, n)
-		Market.apply_sell(state, dest, good, n)
-		Economy.earn(state, "sales", revenue)
-		sales += revenue
-		sold.append([good, n])
+		var prices := Market.sell_lot_prices(state, c, g, n)
+		var k := 0
+		var revenue := 0
+		for price in prices:
+			if limit > 0 and int(price) < limit:
+				break
+			revenue += int(price)
+			k += 1
+		if k > 0:
+			var cost := Economy.remove_stock(v["cargo"], g, k)
+			Market.apply_sell(state, c, g, k)
+			Economy.earn(state, "sales", revenue)
+			sales += revenue
+			sold_cost += cost
+			sold.append([g, k])
+		if k < n:
+			notes.append("kept %d %s (price below your minimum of %s)" % [n - k, g, Fmt.coins(limit)])
+	loop["sales"] = int(loop["sales"]) + sales
+	loop["sold_cost"] = int(loop["sold_cost"]) + sold_cost
 
 	var bought: Array = []
-	var short: Array = []
 	var purchases := 0
-	for good in Data.good_ids():
-		var wanted := int(trip["buy"].get(good, 0))
-		if wanted <= 0:
+	for g in Data.good_ids():
+		if not st["buy"].has(g) or not Market.city_sells(state, c, g):
 			continue
-		var prices := Market.buy_lot_prices(state, dest, good, wanted)
+		var want := int(st["buy"][g]["lots"])
+		var limit := int(st["buy"][g]["max"])
+		var room := int(v["capacity"]) - Economy.total_lots(v["cargo"])
+		var n := mini(want, maxi(0, room))
+		var prices := Market.buy_lot_prices(state, c, g, n)
 		var cash := int(state["treasury"])
 		var k := 0
 		var paid := 0
+		var reason := ""
 		for price in prices:
+			if limit > 0 and int(price) > limit:
+				reason = "price above your maximum of %s" % Fmt.coins(limit)
+				break
 			if cash < int(price):
+				reason = "not enough money"
 				break
 			cash -= int(price)
 			paid += int(price)
 			k += 1
+		if n < want and reason == "":
+			reason = "no room on board"
 		if k > 0:
 			Economy.spend(state, "purchases", paid)
-			Market.apply_buy(state, dest, good, k)
-			Economy.add_stock(v["cargo"], good, k, paid)
+			Market.apply_buy(state, c, g, k)
+			Economy.add_stock(v["cargo"], g, k, paid)
 			purchases += paid
-			bought.append([good, k])
-		if k < wanted:
-			short.append("%d of %d %s" % [k, wanted, good])
+			bought.append([g, k])
+		if k < want:
+			notes.append("got %d of %d %s (%s)" % [k, want, g, reason])
+	loop["purchases"] = int(loop["purchases"]) + purchases
 
 	var parts: PackedStringArray = []
 	if not sold.is_empty():
@@ -340,48 +531,64 @@ static func _arrive_abroad(state: Dictionary, v: Dictionary) -> void:
 		parts.append("bought %s for %s" % [Fmt.lots_list(bought), Fmt.coins(purchases)])
 	if parts.is_empty():
 		parts.append("traded nothing")
-	var text := "%s in %s: %s." % [v["name"], dest_name, " and ".join(parts)]
-	if not short.is_empty():
-		text += " Couldn't afford everything: got %s." % ", ".join(PackedStringArray(short))
+	var text := "%s in %s: %s." % [v["name"], cname, " and ".join(parts)]
+	if not notes.is_empty():
+		text += " Note: %s." % "; ".join(notes)
 	News.add(state, text, News.KIND_TRADE)
-
-	trip["result"] = {"sales": sales, "sales_profit": sales - sold_cost, "purchases": purchases}
-	Economy.spend(state, "trip_fees", int(trip["fee_back"]))
-	var t := int(state["time_hours"])
-	trip["phase"] = "back"
-	trip["leg_start"] = t
-	trip["leg_end"] = t + int(trip["days"]) * 24
 
 
 static func _arrive_home(state: Dictionary, v: Dictionary) -> void:
-	var wh: Dictionary = Economy.home(state)["warehouse"]
+	var home: Dictionary = Economy.home(state)
 	var unloaded: Array = []
-	for good in Data.good_ids():
-		var n := Economy.stock(v["cargo"], good)
+	for g in Data.good_ids():
+		var n := Economy.stock(v["cargo"], g)
 		if n <= 0:
 			continue
-		var cost := Economy.remove_stock(v["cargo"], good, n)
-		Economy.add_stock(wh, good, n, cost)
-		unloaded.append([good, n])
-	var home_name: String = Economy.home(state)["name"]
-	if unloaded.is_empty():
-		News.add(state, "%s is back in %s." % [v["name"], home_name], News.KIND_TRADE)
-	else:
-		News.add(state, "%s is back in %s with %s." % [v["name"], home_name, Fmt.lots_list(unloaded)], News.KIND_TRADE)
-	v["trip"] = {}
+		var cost := Economy.remove_stock(v["cargo"], g, n)
+		Economy.add_stock(home["warehouse"], g, n, cost)
+		unloaded.append([g, n])
+	var loop: Dictionary = v["loop"]
+	var cash := int(loop["sales"]) - int(loop["purchases"]) - int(loop["fees"])
+	var profit := int(loop["sales"]) - int(loop["sold_cost"]) - int(loop["fees"])
+	var stats: Dictionary = v["stats"]
+	stats["loops"] = int(stats["loops"]) + 1
+	stats["last_cash"] = cash
+	stats["last_profit"] = profit
+	stats["total_profit"] = int(stats["total_profit"]) + profit
+	var text := "%s is back in %s: cash %s, profit against cost %s." % [v["name"], home["name"], Fmt.signed(cash), Fmt.signed(profit)]
+	if not unloaded.is_empty():
+		text += " Unloaded %s." % Fmt.lots_list(unloaded)
+	News.add(state, text, News.KIND_TRADE)
 	v["location"] = state["home_id"]
+	if bool(v["route"]["repeat"]) and not bool(v["stop_requested"]):
+		_start_loop(state, v)
+		return
+	v["last_route"] = v["route"]
+	v["route"] = {}
+	v["loop"] = {}
+	v["stop_requested"] = false
 
 
-## Where a travelling vehicle is: {"stops": [city ids in travel order], "hop_days": [...], "elapsed_days": float}.
-## Empty when the vehicle is parked.
+## Fees for legs that are certain to be charged in the vehicles' current loops (for the forecast).
+static func committed_fees(state: Dictionary) -> int:
+	var total := 0
+	for v in state["vehicles"]:
+		var leg: Dictionary = v["leg"]
+		if leg.is_empty() or int(leg["next"]) < 0:
+			continue
+		var stops: Array = v["route"]["stops"]
+		var prev: String = stops[int(leg["next"])]["city"]
+		for i in range(int(leg["next"]) + 1, stops.size()):
+			total += trip_fee(state, v["type"], int(path_for(state, prev, stops[i]["city"], v["type"])["days"]))
+			prev = stops[i]["city"]
+		total += trip_fee(state, v["type"], int(path_for(state, prev, state["home_id"], v["type"])["days"]))
+	return total
+
+
+## Where a travelling vehicle is: {"stops": [city ids of this leg], "hop_days": [...], "elapsed_days": float}.
 static func trip_progress(state: Dictionary, v: Dictionary) -> Dictionary:
-	var trip: Dictionary = v["trip"]
-	if trip.is_empty():
+	var leg: Dictionary = v["leg"]
+	if leg.is_empty():
 		return {}
-	var stops: Array = trip["path"].duplicate()
-	var hops: Array = trip["hop_days"].duplicate()
-	if trip["phase"] == "back":
-		stops.reverse()
-		hops.reverse()
-	var elapsed := float(int(state["time_hours"]) - int(trip["leg_start"])) / 24.0
-	return {"stops": stops, "hop_days": hops, "elapsed_days": clampf(elapsed, 0.0, float(trip["days"]))}
+	var elapsed := float(int(state["time_hours"]) - int(leg["start"])) / 24.0
+	return {"stops": leg["path"], "hop_days": leg["hop_days"], "elapsed_days": clampf(elapsed, 0.0, float(leg["days"]))}

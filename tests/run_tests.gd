@@ -40,6 +40,23 @@ func _init() -> void:
 	test_retooling()
 	test_buy_vehicle()
 	test_save_mid_trip()
+	# Milestone 3
+	test_food_and_growth()
+	test_starvation()
+	test_stage_up()
+	test_infrastructure()
+	test_production_access()
+	test_add_line_and_inputs()
+	test_tier_change()
+	test_line_upgrades()
+	test_priority()
+	test_reserves()
+	# Milestone 4
+	test_multi_stop_route()
+	test_repeat_and_stop()
+	test_price_limits()
+	test_route_validation()
+	test_committed_fees()
 	print("\n%d passed, %d failed" % [passed, failed])
 	quit(1 if failed > 0 else 0)
 
@@ -252,9 +269,23 @@ func home_wh(g: Game) -> Dictionary:
 	return g.home()["warehouse"]
 
 
-## A city the barge can reach, and the path there.
+## Nobody to feed: isolates production and trade tests from food consumption.
+func no_mouths(g: Game) -> void:
+	g.home()["pop"] = 0
+	g.home()["pop_exact"] = 0.0
+
+
 func barge_destination(g: Game) -> Dictionary:
 	return Transport.reachable(g.state, g.state["home_id"], "barge")[0]
+
+
+func one_stop(dest: String, sell: Dictionary, buy: Dictionary) -> Dictionary:
+	var stop := {"city": dest, "sell": {}, "buy": {}}
+	for good in sell:
+		stop["sell"][good] = {"lots": -1}
+	for good in buy:
+		stop["buy"][good] = {"lots": int(buy[good])}
+	return {"load": sell, "stops": [stop], "repeat": false}
 
 
 func news_contains(g: Game, needle: String) -> bool:
@@ -262,6 +293,13 @@ func news_contains(g: Game, needle: String) -> bool:
 		if String(entry["text"]).contains(needle):
 			return true
 	return false
+
+
+func first_produced_except(city: Dictionary, avoid: String) -> String:
+	for good in city["produces"]:
+		if good != avoid:
+			return good
+	return ""
 
 
 func test_start_state() -> void:
@@ -273,12 +311,14 @@ func test_start_state() -> void:
 	for v in s["vehicles"]:
 		check(Transport.is_idle_at_home(s, v), "%s starts idle at home" % v["name"])
 	check(g.home()["lines"].size() == 2, "Stage 1 home has two lines")
+	check(int(g.home()["pop"]) == 2000 and int(g.home()["stage"]) == 1, "home starts at Stage 1 with 2,000 people")
 	check(g.needs_line_choice(), "lines start unassigned")
 	check(g.net_worth() == 3000000 + 1700000 + 1000000, "start net worth = treasury + vehicles + lines")
 
 
 func test_production() -> void:
 	var g := new_game("production", 10)
+	no_mouths(g)
 	var opts: Array = g.home()["production_options"]
 	var a: String = opts[0]
 	var b: String = opts[1]
@@ -309,7 +349,6 @@ func test_running_costs() -> void:
 	check(int(f["upkeep"]) == 34000, "forecast shows upkeep per month")
 	check(int(f["per_month"]) == int(f["upkeep"]) + int(f["tax"]) + int(f["storage"]), "forecast total adds up")
 	check(int(f["runway_days"]) > 0, "forecast shows a runway")
-	# Tax minimum
 	g.state["treasury"] = 1000000
 	check(int(g.forecast()["tax"]) == 25000, "tax never below the Stage 1 minimum of 25,000")
 
@@ -317,7 +356,7 @@ func test_running_costs() -> void:
 func test_storage_fee() -> void:
 	var g := new_game("storage", 10)
 	Economy.add_stock(home_wh(g), "Salt", 10, 1000000)
-	check(int(g.forecast()["storage"]) == 5000, "storage fee is 0.5% of stock value per month")
+	check(int(g.forecast()["storage"]) == 5000, "storage fee is 0.5%% of stock value per month")
 	g.advance_hours(720)
 	var stored := int(g.state["ledger"]["last"]["storage"])
 	check(stored >= 4999 and stored <= 5000, "a month of storage costs 5,000 (%d)" % stored)
@@ -344,25 +383,26 @@ func test_home_sale() -> void:
 
 func test_trip_round() -> void:
 	var g := new_game("trip", 10)
+	no_mouths(g)
 	var s := g.state
 	var dest_info := barge_destination(g)
 	var dest: String = dest_info["city"]
 	var days: int = dest_info["days"]
-	var buy_good: String = s["cities"][dest]["produces"][0]
+	var buy_good := first_produced_except(s["cities"][dest], "Stone")
 	Economy.add_stock(home_wh(g), "Stone", 15, 15 * 37500)
-	var p := g.plan_trip("barge-1", dest, {"Stone": 15}, {buy_good: 5})
+	var route := one_stop(dest, {"Stone": 15}, {buy_good: 5})
+	var p := g.plan_route("barge-1", route)
 	check(p["errors"].is_empty(), "a valid trip plans without errors %s" % str(p["errors"]))
-	check(int(p["fee_out"]) == int(round(40000.0 * days / 30.0)), "barge fee is 40,000 ÷ 30 per day of travel")
-	check(int(p["cargo_out"]) == 15 and int(p["cargo_back"]) == 5, "cargo counts")
+	check(int(p["legs"][0]["fee"]) == int(round(40000.0 * days / 30.0)), "barge fee is 40,000 ÷ 30 per day of travel")
+	check(int(p["load_lots"]) == 15, "loads 15 lots")
 	var before := int(s["treasury"])
-	var r := g.send_trip("barge-1", dest, {"Stone": 15}, {buy_good: 5})
+	var r := g.send_route("barge-1", route)
 	check(r["errors"].is_empty(), "the trip is sent")
-	check(int(s["treasury"]) == before - int(p["fee_out"]), "the outbound fee is paid on departure")
+	check(int(s["treasury"]) == before - int(p["legs"][0]["fee"]), "the outbound fee is paid on departure")
 	check(Economy.stock(home_wh(g), "Stone") == 0, "cargo leaves the warehouse")
 	var barge := Transport.vehicle(s, "barge-1")
 	check(barge["location"] == "" and Economy.stock(barge["cargo"], "Stone") == 15, "the barge carries the cargo")
 
-	# Predict the trade exactly: on the arrival hour, markets step first, then the vehicle trades.
 	g.advance_hours(days * 24 - 1)
 	var copy: Dictionary = s.duplicate(true)
 	Market.step_market(copy["cities"][dest], 1)
@@ -370,15 +410,19 @@ func test_trip_round() -> void:
 	var expected_cost := Economy.sum(Market.buy_lot_prices(copy, dest, buy_good, 5))
 	check(Economy.stock(barge["cargo"], "Stone") == 15, "still travelling one hour before arrival")
 	g.advance_hours(1)
-	check(int(barge["trip"]["result"]["sales"]) == expected_sales, "cargo sells at the arrival price, lot by lot")
-	check(int(barge["trip"]["result"]["purchases"]) == expected_cost, "goods are bought at the arrival price")
+	check(int(barge["loop"]["sales"]) == expected_sales, "cargo sells at the arrival price, lot by lot")
+	check(int(barge["loop"]["purchases"]) == expected_cost, "goods are bought at the arrival price")
 	check(Economy.stock(barge["cargo"], buy_good) == 5, "bought goods are on board")
-	check(barge["trip"]["phase"] == "back", "the barge heads home")
+	check(int(barge["leg"]["next"]) == -1, "the barge heads home")
 	check(news_contains(g, "in %s: sold 15 Stone" % s["cities"][dest]["name"]), "the trade is reported in the news")
 	g.advance_hours(days * 24)
 	check(Transport.is_idle_at_home(s, barge), "the barge is home and idle")
 	check(Economy.stock(home_wh(g), buy_good) == 5, "bought goods are unloaded into the warehouse")
 	check(int(home_wh(g)[buy_good]["cost"]) == expected_cost, "unloaded goods keep their purchase cost")
+	var fees := 2 * int(p["legs"][0]["fee"])
+	check(int(barge["stats"]["last_cash"]) == expected_sales - expected_cost - fees, "the loop's cash result is reported")
+	check(int(barge["stats"]["last_profit"]) == expected_sales - 15 * 37500 - fees, "profit counts the sold goods at cost")
+	check(not barge["last_route"].is_empty(), "the finished route is remembered for reuse")
 
 
 func test_trip_validation() -> void:
@@ -396,36 +440,39 @@ func test_trip_validation() -> void:
 		if not s["cities"][dest]["produces"].has(id):
 			not_sold = id
 			break
-	check(String(g.plan_trip("wagon-1", overseas, {"Stone": 1}, {})["errors"][0]).contains("can't reach"), "a wagon can't reach overseas")
-	check(not g.plan_trip("barge-1", dest, {"Stone": 25}, {})["errors"].is_empty(), "can't overload the barge")
-	check(not g.plan_trip("barge-1", dest, {}, {not_sold: 1})["errors"].is_empty(), "can't buy what the city doesn't sell")
-	check(not g.plan_trip("barge-1", dest, {"Salt": 1}, {})["errors"].is_empty(), "can't sell what you don't have")
-	check(not g.plan_trip("barge-1", dest, {}, {})["errors"].is_empty(), "an empty trip is refused")
-	check(not g.plan_trip("barge-1", s["home_id"], {"Stone": 1}, {})["errors"].is_empty(), "home isn't a destination")
-	g.send_trip("barge-1", dest, {"Stone": 5}, {})
-	check(not g.plan_trip("barge-1", dest, {"Stone": 5}, {})["errors"].is_empty(), "a vehicle away can't be sent again")
+	check(String(g.plan_route("wagon-1", one_stop(overseas, {"Stone": 1}, {}))["errors"][0]).contains("no road"), "a wagon can't reach overseas")
+	check(not g.plan_route("barge-1", one_stop(dest, {"Stone": 25}, {}))["errors"].is_empty(), "can't overload the barge")
+	check(not g.plan_route("barge-1", one_stop(dest, {}, {not_sold: 1}))["errors"].is_empty(), "can't buy what the city doesn't sell")
+	check(not g.plan_route("barge-1", one_stop(dest, {"Salt": 1}, {}))["errors"].is_empty(), "can't load what you don't have")
+	check(not g.plan_route("barge-1", one_stop(dest, {}, {}))["errors"].is_empty(), "an empty trip is refused")
+	check(not g.plan_route("barge-1", one_stop(s["home_id"], {"Stone": 1}, {}))["errors"].is_empty(), "home isn't a stop")
+	g.send_route("barge-1", one_stop(dest, {"Stone": 5}, {}))
+	check(not g.plan_route("barge-1", one_stop(dest, {"Stone": 5}, {}))["errors"].is_empty(), "a busy vehicle can't be sent again")
 	s["treasury"] = 0
-	check(not g.plan_trip("wagon-1", dest, {"Stone": 5}, {})["errors"].is_empty() or Transport.path_for(s, s["home_id"], dest, "wagon")["days"] < 0, "no trip without money for the fee")
+	var wagon_reach := Transport.reachable(s, s["home_id"], "wagon")
+	check(not g.plan_route("wagon-1", one_stop(wagon_reach[0]["city"], {"Stone": 5}, {}))["errors"].is_empty(), "no trip without money for the fee")
 
 
 func test_trip_short_of_money() -> void:
 	var g := new_game("short", 10)
+	no_mouths(g)
 	var s := g.state
 	var dest_info := barge_destination(g)
 	var dest: String = dest_info["city"]
 	var good: String = s["cities"][dest]["produces"][0]
-	var fee := Transport.trip_fee("barge", dest_info["days"])
+	var fee := Transport.trip_fee(s, "barge", dest_info["days"])
 	var price := Market.listed_price(s, dest, good)
-	s["treasury"] = fee + int(price * 2.5) + 60000  # running costs eat a little on the way
-	g.send_trip("barge-1", dest, {}, {good: 10})
+	s["treasury"] = fee + int(price * 2.5) + 60000
+	g.send_route("barge-1", one_stop(dest, {}, {good: 10}))
 	g.advance_hours(int(dest_info["days"]) * 24)
 	var got := Economy.stock(Transport.vehicle(s, "barge-1")["cargo"], good)
 	check(got >= 1 and got < 10, "buys only what it can afford (%d of 10)" % got)
-	check(news_contains(g, "Couldn't afford everything"), "the shortfall is reported")
+	check(news_contains(g, "not enough money"), "the shortfall is reported")
 
 
 func test_retooling() -> void:
 	var g := new_game("retool", 10)
+	no_mouths(g)
 	var opts: Array = g.home()["production_options"]
 	var a: String = opts[0]
 	var b: String = opts[1]
@@ -435,11 +482,11 @@ func test_retooling() -> void:
 	var before := int(g.state["treasury"])
 	var worth_before := g.net_worth()
 	check(g.choose_line(0, a) != "", "retooling to the same good is refused")
-	check(g.choose_line(0, "Gold") != "", "can't produce what home can't make")
+	check(g.choose_line(0, "Gold") != "", "can't produce an import-only good")
 	check(g.choose_line(0, b) == "", "retooling starts")
 	check(int(g.state["treasury"]) == before - 125000, "retooling costs 25% of 500,000")
 	check(g.net_worth() == worth_before - 125000, "retooling is a cost, not an asset")
-	check(g.choose_line(0, a) != "", "can't retool a line that is already retooling")
+	check(g.choose_line(0, a) != "", "can't retool a line that is already switching")
 	g.advance_hours(14 * 24 - 1)
 	check(Economy.stock(home_wh(g), a) == a_before, "no production during the 14-day downtime")
 	check(g.home()["lines"][0]["good"] == a, "still the old good until the downtime ends")
@@ -470,7 +517,7 @@ func test_save_mid_trip() -> void:
 	a.choose_line(1, opts[1])
 	a.advance_hours(24 * 20)
 	var dest: String = barge_destination(a)["city"]
-	a.send_trip("barge-1", dest, {opts[0]: 5}, {})
+	a.send_route("barge-1", one_stop(dest, {opts[1]: 5}, {}))
 	a.advance_hours(24 * 3)
 	var path := "user://test_midtrip.sav"
 	a.save_to(path)
@@ -480,3 +527,325 @@ func test_save_mid_trip() -> void:
 	b.advance_hours(24 * 60)
 	check(SaveLoad.to_json(a.state, a.rng) == SaveLoad.to_json(b.state, b.rng), "a loaded mid-trip game continues identically")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+# ------------------------------------------------------------------ Milestone 3
+
+func set_pop(g: Game, pop: int) -> void:
+	g.home()["pop"] = pop
+	g.home()["pop_exact"] = float(pop)
+
+
+func test_food_and_growth() -> void:
+	var g := new_game("growth", 10)
+	var h := g.home()
+	g.advance_hours(240)
+	check(int(h["pop"]) == 2000, "no food in stock: the population doesn't grow")
+	check(float(Economy.growth_breakdown(g.state, h)["rate"]) == 0.0, "growth rate is 0 without food")
+	Economy.add_stock(h["warehouse"], "Grain", 10, 300000)
+	var b := Economy.growth_breakdown(g.state, h)
+	check(is_equal_approx(float(b["rate"]), 0.04), "fed + 3 months stored + healthy treasury = 4%% (%.3f)" % float(b["rate"]))
+	var start_pop := float(h["pop_exact"])
+	var grain_before := Economy.stock(h["warehouse"], "Grain")
+	g.advance_hours(720)
+	var expected := start_pop * 1.04
+	check(absf(float(h["pop_exact"]) - expected) < 1.0, "a month at 4%% growth: %.1f vs %.1f" % [float(h["pop_exact"]), expected])
+	check(Economy.stock(h["warehouse"], "Grain") == grain_before - 1, "2,000 people eat one lot a month")
+	Economy.add_stock(h["warehouse"], "Fish", 2, 82500)
+	check(is_equal_approx(float(Economy.growth_breakdown(g.state, h)["rate"]), 0.045), "both Grain and Fish adds 0.5%")
+	h["infrastructure"]["housing"] = 1
+	h["infrastructure"]["harbor"] = 1
+	h["infrastructure"]["roads"] = 1
+	var capped := Economy.growth_breakdown(g.state, h)
+	check(is_equal_approx(float(capped["rate"]), 0.05) and bool(capped["capped"]), "growth is capped at 5%")
+	check(Economy.food_need_per_month(h) == 1, "up to 2,500 people need 1 lot a month")
+	set_pop(g, 2501)
+	check(Economy.food_need_per_month(h) == 2, "2,501 people need 2 lots a month")
+	var eta := Economy.next_stage_eta(g.state, h)
+	check(int(eta["stage"]) == 2 and float(eta["months"]) > 0.0, "the next stage has a time estimate")
+
+
+func test_starvation() -> void:
+	var g := new_game("starve", 10)
+	var h := g.home()
+	g.advance_hours(24 * 89)
+	check(int(h["pop"]) == 2000, "no decline before 90 days without food")
+	g.advance_hours(24 * 31)
+	check(int(h["pop"]) < 2000, "after 90 days without food the population declines (%d)" % int(h["pop"]))
+	check(bool(Economy.growth_breakdown(g.state, h)["starving"]), "starvation is shown")
+
+
+func test_stage_up() -> void:
+	var g := new_game("stage", 10)
+	var h := g.home()
+	set_pop(g, 9995)
+	Economy.add_stock(h["warehouse"], "Grain", 50, 1500000)
+	check(not Economy.can_add_line(h), "Stage 1 allows no third line")
+	g.advance_hours(72)
+	check(int(h["stage"]) == 2, "the settlement becomes a Town at 10,000 people")
+	check(news_contains(g, "has grown into a town"), "the new stage is announced")
+	check(Economy.can_add_line(h), "Stage 2 allows more lines")
+	check(int(g.forecast()["tax"]) >= 250000, "the Stage 2 tax minimum applies")
+	set_pop(g, 100)
+	g.advance_hours(24)
+	check(int(h["stage"]) == 2, "stages never regress")
+
+
+func test_infrastructure() -> void:
+	var g := new_game("infra", 10)
+	var s := g.state
+	var h := g.home()
+	var far := Transport.reachable(s, s["home_id"], "wagon")
+	var far_city: String = far[far.size() - 1]["city"]
+	var wagon_days := int(Transport.path_for(s, s["home_id"], far_city, "wagon")["days"])
+	var barge_fee := Transport.trip_fee(s, "barge", 10)
+	var worth := g.net_worth()
+	check(g.build("housing") == "", "build housing")
+	check(int(s["treasury"]) == 3000000 - 1000000, "Stage 1 infrastructure costs 1,000,000")
+	check(int(h["pop"]) == 2300, "housing adds 15%% population at once (%d)" % int(h["pop"]))
+	check(g.net_worth() == worth, "infrastructure counts toward net worth at cost")
+	check(g.build("housing") != "", "only one housing per stage")
+	check(g.build("retooling").contains("Stage 2"), "the retooling works need Stage 2")
+	check(g.build("roads") == "", "build roads")
+	check(int(Transport.path_for(s, s["home_id"], far_city, "wagon")["days"]) < wagon_days, "roads make wagons faster (%d → %d days)" % [wagon_days, int(Transport.path_for(s, s["home_id"], far_city, "wagon")["days"])])
+	check(g.build("harbor") == "", "build harbor")
+	check(Transport.trip_fee(s, "barge", 10) == int(round(barge_fee * 0.9)), "a harbor cuts water fees by 10%")
+	check(Transport.trip_fee(s, "wagon", 10) == 5000, "the harbor doesn't change road fees")
+	check(g.build("roads") != "", "not enough money or already built shows an error")
+	h["stage"] = 2
+	s["treasury"] = 100000000
+	check(g.build("retooling") == "" and Economy.retool_days(h) == 12, "the retooling works cut downtime to 12 days")
+	check(int(s["ledger"]["current"]["infrastructure"]) > 0, "infrastructure spending is in the books")
+
+
+func test_production_access() -> void:
+	var g := new_game("access", 10)
+	var h := g.home()
+	check(Economy.cannot_produce_reason(h, "Spices").contains("Import only"), "Spices are import-only")
+	check(Economy.cannot_produce_reason(h, "Cloth").contains("Stage 2"), "Cloth unlocks at Stage 2")
+	check(Economy.cannot_produce_reason(h, "Steel").contains("Stage 3"), "Steel unlocks at Stage 3")
+	check(Economy.cannot_produce_reason(h, "Fish") == "", "a coastal home can always fish")
+	h["features"] = []
+	check(Economy.cannot_produce_reason(h, "Timber").contains("forest"), "no forest, no Timber")
+	check(Economy.cannot_produce_reason(h, "Iron Ore").contains("mountains"), "no mountains, no Iron Ore")
+	h["stage"] = 3
+	check(Economy.cannot_produce_reason(h, "Steel") == "", "processed goods can be made anywhere once unlocked")
+	check(Economy.cannot_produce_reason(h, "Wine").contains("warm"), "a northern home can't make Wine")
+	var opts := Economy.producible_goods(h)
+	check(opts.has("Steel") and not opts.has("Gold"), "the producible list follows the rules")
+
+
+func test_add_line_and_inputs() -> void:
+	var g := new_game("inputs", 10)
+	no_mouths(g)
+	var h := g.home()
+	check(g.add_line("Grain").contains("Stage 2"), "no free slot at Stage 1")
+	h["stage"] = 2
+	var before := int(g.state["treasury"])
+	check(g.add_line("Cloth") == "", "add a Cloth line at Stage 2")
+	check(int(g.state["treasury"]) == before - 3000000, "a Tier 2 line costs 3,000,000")
+	check(h["lines"].size() == 3 and int(h["lines"][2]["tier"]) == 2, "the new line is Tier 2")
+	g.advance_hours(72)
+	check(String(h["lines"][2]["waiting"]).contains("Wool"), "without Wool the Cloth line waits")
+	check(news_contains(g, "waiting for inputs"), "the stall is reported")
+	Economy.add_stock(h["warehouse"], "Wool", 5, 5 * 52500)
+	g.advance_hours(1)
+	check(Economy.stock(h["warehouse"], "Cloth") == 1, "Cloth is made once Wool arrives")
+	check(Economy.stock(h["warehouse"], "Wool") == 3, "one lot of Cloth uses 2 Wool")
+	check(String(h["lines"][2]["waiting"]) == "", "the line runs again")
+
+
+func test_tier_change() -> void:
+	var g := new_game("tierup", 10)
+	no_mouths(g)
+	var h := g.home()
+	var opts: Array = h["production_options"]
+	g.choose_line(0, opts[0])
+	h["stage"] = 2
+	var before := int(g.state["treasury"])
+	var worth := g.net_worth()
+	check(g.choose_line(0, "Cloth") == "", "a Tier 1 line can switch to a Tier 2 good")
+	check(int(g.state["treasury"]) == before - 2500000 - 125000, "it costs the tier difference plus retooling")
+	check(g.net_worth() == worth - 125000, "the tier difference becomes part of the line's value")
+	check(int(h["lines"][0]["tier"]) == 2 and int(h["lines"][0]["base_value"]) == 3000000, "the line is now Tier 2")
+	g.advance_hours(14 * 24)
+	check(h["lines"][0]["good"] == "Cloth", "after the downtime it makes Cloth")
+	g.state["treasury"] = 10000000
+	var free_before := int(g.state["treasury"])
+	h["lines"][1]["good"] = ""
+	check(g.choose_line(1, "Cloth") == "", "an unassigned line can start above its tier")
+	check(int(g.state["treasury"]) == free_before - 2500000, "but pays the tier difference")
+
+
+func test_line_upgrades() -> void:
+	var g := new_game("upgrade", 10)
+	no_mouths(g)
+	var h := g.home()
+	g.choose_line(0, h["production_options"][0])
+	var worth := g.net_worth()
+	var before := int(g.state["treasury"])
+	check(g.upgrade_line(0) == "" and Economy.line_output(h["lines"][0]) == 15, "the first upgrade gives 15 lots a month")
+	check(int(g.state["treasury"]) == before - 1000000, "the first upgrade costs 2 × 500,000")
+	check(g.upgrade_line(0) == "" and Economy.line_output(h["lines"][0]) == 20, "the second gives 20 lots a month")
+	check(int(g.state["treasury"]) == before - 3000000, "the second costs 4 × 500,000")
+	check(g.upgrade_line(0) != "", "no third upgrade")
+	check(g.net_worth() == worth, "upgrades count toward net worth at cost")
+	h["lines"][0]["progress"] = 0
+	var good: String = h["lines"][0]["good"]
+	var start := Economy.stock(h["warehouse"], good)
+	g.advance_hours(720)
+	check(Economy.stock(h["warehouse"], good) - start == 20, "an upgraded line makes 20 lots a month")
+
+
+func test_priority() -> void:
+	var g := new_game("priority", 10)
+	no_mouths(g)
+	var h := g.home()
+	h["stage"] = 2
+	h["lines"][0]["good"] = "Cloth"
+	h["lines"][1]["good"] = "Cloth"
+	h["lines"][1]["progress"] = 10
+	Economy.add_stock(h["warehouse"], "Wool", 2, 105000)
+	g.advance_hours(72)
+	check(Economy.stock(h["warehouse"], "Cloth") == 1, "only one lot of Cloth from 2 Wool")
+	check(String(h["lines"][0]["waiting"]) != "" and String(h["lines"][1]["waiting"]) == "", "the line that finished first used the Wool; the other waits")
+	h["lines"][0]["progress"] = 720
+	h["lines"][1]["progress"] = 720
+	h["lines"][0]["waiting"] = ""
+	h["lines"][1]["waiting"] = ""
+	Economy.add_stock(h["warehouse"], "Wool", 2, 105000)
+	g.state["cities"][g.state["home_id"]]["lines"][0]["good"] = "Cloth"
+	var first: Dictionary = h["lines"][0]
+	g.advance_hours(1)
+	check(String(first["waiting"]) == "", "when both are ready, the first line in the list goes first")
+	g.move_line(0, 1)
+	check(h["lines"][1] == first, "lines can be reordered")
+
+
+func test_reserves() -> void:
+	var g := new_game("reserves", 10)
+	no_mouths(g)
+	var h := g.home()
+	var dest: String = barge_destination(g)["city"]
+	Economy.add_stock(h["warehouse"], "Stone", 8, 8 * 37500)
+	g.set_reserve("Stone", 5)
+	check(Economy.available_for_load(h, "Stone") == 3, "a reserve of 5 leaves 3 to load")
+	check(String(g.plan_route("barge-1", one_stop(dest, {"Stone": 4}, {}))["errors"][0]).contains("reserve"), "routes can't take the reserve")
+	check(g.plan_route("barge-1", one_stop(dest, {"Stone": 3}, {}))["errors"].is_empty(), "routes can take what's above it")
+	g.set_reserve("Stone", 0)
+	check(Economy.available_for_load(h, "Stone") == 8, "clearing the reserve frees everything")
+
+
+# ------------------------------------------------------------------ Milestone 4
+
+## Two different wagon destinations, the first selling something.
+func two_wagon_stops(g: Game) -> Array:
+	var r := Transport.reachable(g.state, g.state["home_id"], "wagon")
+	return [r[0]["city"], r[1]["city"]]
+
+
+func test_multi_stop_route() -> void:
+	var g := new_game("multistop", 10)
+	no_mouths(g)
+	var s := g.state
+	var ab := two_wagon_stops(g)
+	var a: String = ab[0]
+	var b: String = ab[1]
+	var y: String = s["cities"][a]["produces"][0]
+	Economy.add_stock(home_wh(g), "Salt", 4, 4 * 67500)
+	var route := {
+		"load": {"Salt": 4},
+		"stops": [
+			{"city": a, "sell": {"Salt": {"lots": -1}}, "buy": {y: {"lots": 6}}},
+			{"city": b, "sell": {y: {"lots": -1}}, "buy": {}},
+		],
+		"repeat": false,
+	}
+	var p := g.plan_route("wagon-1", route)
+	check(p["errors"].is_empty(), "a two-stop route plans %s" % str(p["errors"]))
+	check(p["legs"].size() == 3, "home → A → B → home is three legs")
+	check(p["stops"][1]["onboard"].get(y, 0) == 6, "the estimate carries goods bought at A to B")
+	var fees_planned := int(p["fees"])
+	var fees_before := int(s["ledger"]["current"]["trip_fees"])
+	check(g.send_route("wagon-1", route)["errors"].is_empty(), "the route starts")
+	var w := Transport.vehicle(s, "wagon-1")
+	g.advance_hours(int(p["days"]) * 24)
+	check(Transport.is_idle_at_home(s, w), "the wagon finishes the route and parks at home")
+	check(int(w["stats"]["loops"]) == 1, "one loop completed")
+	check(Economy.stock(home_wh(g), y) == 0 and w["cargo"].is_empty(), "everything bought at A was sold at B")
+	check(news_contains(g, "in %s: sold 6 %s" % [s["cities"][b]["name"], y]), "the sale at B is reported")
+	var ledger_fees := int(s["ledger"]["current"]["trip_fees"]) + int(s["ledger"]["last"]["trip_fees"]) - fees_before
+	check(ledger_fees == fees_planned, "each leg's fee is charged once (%d vs %d)" % [ledger_fees, fees_planned])
+
+
+func test_repeat_and_stop() -> void:
+	var g := new_game("repeat", 10)
+	no_mouths(g)
+	var s := g.state
+	var ab := two_wagon_stops(g)
+	var y: String = s["cities"][ab[0]]["produces"][0]
+	var route := {
+		"load": {},
+		"stops": [
+			{"city": ab[0], "sell": {}, "buy": {y: {"lots": 2}}},
+			{"city": ab[1], "sell": {y: {"lots": -1}}, "buy": {}},
+		],
+		"repeat": true,
+	}
+	var p := g.send_route("wagon-1", route)
+	var w := Transport.vehicle(s, "wagon-1")
+	g.advance_hours(int(p["days"]) * 24 * 2 + 1)
+	check(int(w["stats"]["loops"]) >= 2, "a repeating route keeps going (%d loops)" % int(w["stats"]["loops"]))
+	check(not w["route"].is_empty(), "it is still on its route")
+	g.stop_route("wagon-1")
+	g.advance_hours(int(p["days"]) * 24 + 1)
+	check(Transport.is_idle_at_home(s, w), "after a stop request it finishes the loop and parks")
+	check(not bool(w["stop_requested"]), "the stop request is cleared")
+
+
+func test_price_limits() -> void:
+	var g := new_game("limits", 10)
+	no_mouths(g)
+	var s := g.state
+	var dest_info := barge_destination(g)
+	var dest: String = dest_info["city"]
+	var y: String = first_produced_except(s["cities"][dest], "Stone")
+	Economy.add_stock(home_wh(g), "Stone", 5, 5 * 37500)
+	var route := {
+		"load": {"Stone": 5},
+		"stops": [{"city": dest, "sell": {"Stone": {"lots": -1, "min": 10000000}}, "buy": {y: {"lots": 3, "max": 1}}}],
+		"repeat": false,
+	}
+	var p := g.plan_route("barge-1", route)
+	check(not p["warnings"].is_empty(), "the planner warns that limits block the trade")
+	g.send_route("barge-1", route)
+	g.advance_hours(int(dest_info["days"]) * 24 * 2)
+	check(Economy.stock(home_wh(g), "Stone") == 5, "goods that didn't reach the minimum come home")
+	check(Economy.stock(home_wh(g), y) == 0, "nothing is bought above the maximum")
+	check(news_contains(g, "below your minimum") and news_contains(g, "above your maximum"), "skipped trades are logged")
+
+
+func test_route_validation() -> void:
+	var g := new_game("routecheck", 10)
+	var s := g.state
+	var ab := two_wagon_stops(g)
+	var y: String = s["cities"][ab[0]]["produces"][0]
+	var same := {"load": {}, "stops": [{"city": ab[0], "buy": {y: {"lots": 1}}}, {"city": ab[0], "sell": {y: {"lots": -1}}}]}
+	check(not g.plan_route("wagon-1", same)["errors"].is_empty(), "the same city twice in a row is refused")
+	var overflow := {"load": {}, "stops": [{"city": ab[0], "buy": {y: {"lots": 11}}}]}
+	check(not g.plan_route("wagon-1", overflow)["errors"].is_empty(), "buying more than fits is refused")
+	check(not g.plan_route("wagon-1", {"load": {}, "stops": []})["errors"].is_empty(), "a route needs a stop")
+	var sell_nothing := {"load": {}, "stops": [{"city": ab[0], "sell": {"Salt": {"lots": -1}}}]}
+	check(not g.plan_route("wagon-1", sell_nothing)["warnings"].is_empty(), "selling something not on board is warned about")
+
+
+func test_committed_fees() -> void:
+	var g := new_game("committed", 10)
+	no_mouths(g)
+	var s := g.state
+	var ab := two_wagon_stops(g)
+	var y: String = s["cities"][ab[0]]["produces"][0]
+	var route := {"load": {}, "stops": [{"city": ab[0], "buy": {y: {"lots": 1}}}, {"city": ab[1], "sell": {y: {"lots": -1}}}]}
+	var p := g.send_route("wagon-1", route)
+	var expected := int(p["legs"][1]["fee"]) + int(p["legs"][2]["fee"])
+	check(int(g.forecast()["committed_fees"]) == expected, "fees for the remaining legs are shown as committed")
