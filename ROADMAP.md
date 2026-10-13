@@ -91,6 +91,7 @@ Notes:
 - Pacing with good play: Stage 2 ~20 min, Stage 3 ~1 h, Stage 4 ~2½ h at 1× (was ~2½ h / 5 h / 7½ h).
 - Settlement panel: "Your people want" with stock, use, nearest seller and a Buy… button.
 - 326 headless engine tests. Saves from earlier versions can't be loaded.
+- Barges have no range limit on sheltered water: every mainland coast, fjord and river town (never the islands).
 
 ## Milestone 5 — A living world (next)
 

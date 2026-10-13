@@ -114,7 +114,7 @@
 		"rivers_base": 2,
 		"rivers_per_10_cities": 1,
 		"land_max_distance": 260,
-		"sheltered_max_distance": 340,
+		"island_hop_max_distance": 340,
 		"route_factor": { "land": 1.3, "sheltered": 1.1, "ocean": 1.0 },
 		"speed_units_per_day": { "wagon": 36, "barge": 48, "coastal": 60, "ocean": 90 },
 		"route_vehicle": { "land": "wagon", "sheltered": "barge", "ocean": "ocean" },

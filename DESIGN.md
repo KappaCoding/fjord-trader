@@ -214,6 +214,10 @@ and raw production. Five zones:
 **2d-B. Rivers** ✅
 Several rivers run from the mountains to the west coast. They are **navigable for barges and coastal vessels**
 (sheltered-water routes), not for ocean ships. River towns can fish and farm Grain (2d-A).
+- **No range limit on sheltered water** (decided after the progression update): a barge or coastal vessel can sail
+  between any two coast, fjord or river towns on the mainland, however far apart. It **never crosses the open sea**,
+  so the overseas islands stay ocean-ship only. (Hops between islands within 340 units remain in the data for later,
+  but no barge can get there.)
 
 **2d-C. Travel speed** ✅ (user experience over realism)
 All vehicles are **3× faster** than before (wagon 36, barge 48, coastal vessel 60, ocean ship 90 map units/day).

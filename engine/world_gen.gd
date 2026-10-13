@@ -376,8 +376,9 @@ static func _mainland_road_tree(cities: Dictionary, order: Array) -> Dictionary:
 
 
 ## Route lengths between every pair of cities, per route type (-1 = no direct route).
-## Sheltered water runs along rivers, fjords and the coast (DESIGN 2d-B); ocean ships use the open sea
-## and can't enter rivers.
+## Sheltered water runs along rivers, fjords and the coast (DESIGN 2d-B), between any two mainland water towns
+## however far apart; it never crosses the open sea to the islands. Ocean ships use the open sea and can't
+## enter rivers.
 static func _compute_routes(state: Dictionary) -> Dictionary:
 	var cities: Dictionary = state["cities"]
 	var order: Array = state["city_order"]
@@ -401,9 +402,8 @@ static func _compute_routes(state: Dictionary) -> Dictionary:
 					r["sheltered"] = absf(float(a["river_pos"]) - float(b["river_pos"]))
 				elif both_mainland:
 					var coastal := Geo.city_port(a).distance_to(Geo.city_port(b))
-					if coastal <= float(w["sheltered_max_distance"]):
-						r["sheltered"] = float(a["access"]) + coastal * float(f["sheltered"]) + float(b["access"])
-				elif both_overseas and d <= float(w["sheltered_max_distance"]):
+					r["sheltered"] = float(a["access"]) + coastal * float(f["sheltered"]) + float(b["access"])
+				elif both_overseas and d <= float(w["island_hop_max_distance"]):
 					r["sheltered"] = d * float(f["sheltered"])
 			if Geo.is_sea_site(a["site"]) and Geo.is_sea_site(b["site"]):
 				r["ocean"] = Geo.city_port(a).distance_to(Geo.city_port(b)) * float(f["ocean"])

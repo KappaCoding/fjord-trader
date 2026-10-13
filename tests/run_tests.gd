@@ -1242,6 +1242,24 @@ func test_geography() -> void:
 	check(no_ocean_upriver, "ocean ships can't reach river towns")
 	check(barge_reaches_river_town, "barges can sail up rivers to river towns")
 
+	# Barges have no range limit on sheltered water, but never cross the open sea (2d-B).
+	var all_water_reached := true
+	var no_islands := true
+	for i in 10:
+		var g := new_game("barge-%d" % i, 20 + (i % 3) * 5)
+		var s := g.state
+		for id in s["city_order"]:
+			if id == s["home_id"]:
+				continue
+			var c: Dictionary = s["cities"][id]
+			var days := int(Transport.path_for(s, s["home_id"], id, "barge")["days"])
+			if c["region"] == "mainland" and Geo.is_water_site(c["site"]) and days <= 0:
+				all_water_reached = false
+			if c["region"] == "overseas" and days > 0:
+				no_islands = false
+	check(all_water_reached, "a barge reaches every coast, fjord and river town on the mainland, however far")
+	check(no_islands, "barges never reach the islands across the open sea")
+
 
 func test_travel_speed() -> void:
 	var nearest: Array = []
