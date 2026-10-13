@@ -29,6 +29,9 @@ var _route_line: RichTextLabel
 var _body: VBoxContainer
 var _summary: RichTextLabel
 var _stop_info: Array = []
+var _stop_cargo: Array = []
+var _load_cargo: RichTextLabel
+var _home_cargo: RichTextLabel
 
 
 func _ready() -> void:
@@ -143,7 +146,7 @@ func _apply_presets(route: Dictionary) -> Dictionary:
 			loaded += n
 	var stops: Array = []
 	for st in route.get("stops", []):
-		var stop := {"city": st["city"], "sell": {}, "buy": {}}
+		var stop := {"city": st["city"], "sell_all": bool(st.get("sell_all", false)), "sell": {}, "buy": {}}
 		for g in st.get("sell", {}):
 			stop["sell"][g] = {"lots": int(st["sell"][g].get("lots", -1)), "min": int(st["sell"][g].get("min", 0))}
 		for g in st.get("buy", {}):
@@ -175,7 +178,7 @@ func _add_stop() -> void:
 		if id != last:
 			pick = id
 			break
-	stops.append({"city": pick, "sell": {}, "buy": {}})
+	stops.append({"city": pick, "sell_all": false, "sell": {}, "buy": {}})
 
 
 # ------------------------------------------------------------------ building the form
@@ -211,11 +214,14 @@ func _rebuild() -> void:
 	_building = true
 	_clear(_body)
 	_stop_info.clear()
+	_stop_cargo.clear()
 	_plan = game.plan_route(_vid, _route)
 	_signature = _make_signature(_plan)
 	_build_load_section()
 	for i in _route["stops"].size():
 		_build_stop(i)
+	_home_cargo = Style.rich()
+	_body.add_child(_home_cargo)
 	var add := Button.new()
 	add.text = "+ Add a stop"
 	add.tooltip_text = "Add another city to visit before coming home"
@@ -263,6 +269,8 @@ func _build_load_section() -> void:
 		vb.add_child(grid)
 	else:
 		vb.add_child(Style.label("Nothing in the warehouse to load (or it is all kept in reserve).", Style.MUTED))
+	_load_cargo = Style.rich()
+	vb.add_child(_load_cargo)
 	_body.add_child(panel)
 
 
@@ -341,6 +349,10 @@ func _build_stop(i: int) -> void:
 		_body.add_child(panel)
 		return
 
+	var cargo_l := Style.rich()
+	vb.add_child(cargo_l)
+	_stop_cargo.append(cargo_l)
+
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", 30)
 	vb.add_child(cols)
@@ -350,43 +362,60 @@ func _build_stop(i: int) -> void:
 	sell_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(sell_box)
 	var sell_head := HBoxContainer.new()
+	sell_head.add_theme_constant_override("separation", 12)
 	sell_head.add_child(Style.label("Sell here", Style.WANT))
-	var all_btn := Button.new()
-	all_btn.text = "Sell everything"
-	all_btn.tooltip_text = "Sell every good that is on board when the vehicle arrives"
-	all_btn.pressed.connect(func():
-		var est := _stop_estimate(i)
-		for g in est.get("onboard", {}):
-			if int(est["onboard"][g]) > 0:
-				var lim := int(st["sell"].get(g, {}).get("min", 0))
-				st["sell"][g] = {"lots": -1, "min": lim}
-		_rebuild())
-	sell_head.add_child(all_btn)
 	sell_box.add_child(sell_head)
 	var est := _stop_estimate(i)
 	var onboard: Dictionary = est.get("onboard", {})
-	var sell_goods: Array = []
-	for g in Data.good_ids():
-		if int(onboard.get(g, 0)) > 0 or st["sell"].has(g):
-			sell_goods.append(g)
-	if sell_goods.is_empty():
-		sell_box.add_child(Style.label("Nothing on board when it arrives.", Style.MUTED))
+	var has_cargo := false
+	for g in onboard:
+		if int(onboard[g]) > 0:
+			has_cargo = true
+	if not has_cargo:
+		# Nothing to sell here, so there is nothing to switch on: clear the setting rather than hide it.
+		st["sell_all"] = false
+		var why := "load goods at home or buy them at an earlier stop" if i == 0 else "everything was sold at an earlier stop"
+		if i == 0 and _route["load"].is_empty():
+			why = "load goods at home first"
+		var empty_l := Style.label("Nothing on board when it arrives — %s." % why, Style.MUTED)
+		empty_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_l.custom_minimum_size.x = 340
+		sell_box.add_child(empty_l)
 	else:
+		var sell_all := bool(st.get("sell_all", false))
+		var cb := CheckBox.new()
+		cb.text = "Sell everything on board"
+		cb.tooltip_text = "Sell every good the vehicle has on board when it arrives here. Minimum prices still apply."
+		cb.set_pressed_no_signal(sell_all)
+		if sell_all:
+			cb.add_theme_color_override("font_color", Style.WANT)
+			cb.add_theme_color_override("font_pressed_color", Style.WANT)
+		cb.toggled.connect(func(on: bool):
+			st["sell_all"] = on
+			_rebuild.call_deferred())
+		sell_head.add_child(cb)
 		var grid := GridContainer.new()
 		grid.columns = 4
 		grid.add_theme_constant_override("h_separation", 8)
 		for h in ["Good", "On board", "Lots", "Min. price"]:
 			grid.add_child(Style.label(h, Style.MUTED, 13))
-		for g in sell_goods:
+		for g in Data.good_ids():
+			var on_board := int(onboard.get(g, 0))
+			var entry: Dictionary = st["sell"].get(g, {"lots": 0, "min": 0})
+			if on_board <= 0 and (sell_all or int(entry["lots"]) == 0):
+				continue
 			var band: String = s["cities"][city_id]["market"][g]["band"]
 			var name_l := Style.label(g, Style.band_color(band))
 			name_l.tooltip_text = "%s pays %s for the first lot" % [s["cities"][city_id]["name"], Fmt.coins(Market.sell_lot_prices(s, city_id, g, 1)[0])]
 			grid.add_child(name_l)
-			grid.add_child(Style.right(Style.label(str(int(onboard.get(g, 0))))))
-			var entry: Dictionary = st["sell"].get(g, {"lots": 0, "min": 0})
-			var shown := int(onboard.get(g, 0)) if int(entry["lots"]) < 0 else int(entry["lots"])
+			grid.add_child(Style.right(Style.label(str(on_board))))
+			var shown := on_board if (sell_all or int(entry["lots"]) < 0) else int(entry["lots"])
 			var lots := _spin(999, shown, 1)
-			lots.tooltip_text = "Lots to sell here (it sells what is on board, up to this many)"
+			if sell_all:
+				lots.editable = false
+				lots.tooltip_text = "Selling everything on board — untick the box above to choose amounts"
+			else:
+				lots.tooltip_text = "Lots to sell here (it sells what is on board, up to this many)"
 			lots.value_changed.connect(func(v: float):
 				if _building:
 					return
@@ -516,6 +545,22 @@ func _recalc() -> void:
 			text += "   sell %s · buy %s" % [Fmt.coins(sales), Fmt.coins(cost)]
 		_stop_info[i].text = text
 
+	var cap := int(_plan["capacity"])
+	var home_name: String = Economy.home(s)["name"]
+	if _load_cargo != null:
+		_load_cargo.text = "[b]Leaves %s with:[/b] %s" % [home_name, _cargo_text(_plan.get("load_cargo", {}), cap)]
+	for i in _stop_cargo.size():
+		var est := _stop_estimate(i)
+		if est.is_empty():
+			_stop_cargo[i].text = ""
+			continue
+		_stop_cargo[i].text = "[b]Arrives with:[/b] %s   →   [b]leaves with:[/b] %s" % [
+			_cargo_text(est.get("onboard", {}), cap), _cargo_text(est.get("onboard_after", {}), cap)]
+	if _home_cargo != null:
+		var back: Dictionary = _plan.get("home_cargo", {})
+		_home_cargo.text = "[b]Back at %s with:[/b] %s%s" % [home_name, _cargo_text(back, cap),
+			"  [color=#%s](unloaded into the warehouse)[/color]" % muted if not back.is_empty() else ""]
+
 	var lines: PackedStringArray = []
 	lines.append("Per trip: fees [b]%s[/b] · sales [b]%s[/b] · purchases [b]%s[/b]" % [
 		Fmt.coins(_plan["fees"]), Fmt.coins(_plan["sales"]), Fmt.coins(_plan["purchases"])])
@@ -545,3 +590,17 @@ func _days_until(i: int) -> int:
 	for k in mini(i + 1, legs.size()):
 		total += int(legs[k]["days"])
 	return total
+
+
+## {"Wool": 6, "Grain": 4} -> "6 Wool, 4 Grain (10/10 lots)"; empty -> "nothing"
+func _cargo_text(cargo: Dictionary, cap: int) -> String:
+	var parts: PackedStringArray = []
+	var total := 0
+	for g in Data.good_ids():
+		if int(cargo.get(g, 0)) > 0:
+			parts.append("%d %s" % [int(cargo[g]), g])
+			total += int(cargo[g])
+	if parts.is_empty():
+		return "[color=#%s]nothing[/color]" % Style.hex(Style.MUTED)
+	var col := Style.WARN if total >= cap else Style.MUTED
+	return "%s [color=#%s](%d/%d lots)[/color]" % [", ".join(parts), Style.hex(col), total, cap]

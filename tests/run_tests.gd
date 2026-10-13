@@ -57,6 +57,8 @@ func _init() -> void:
 	test_price_limits()
 	test_route_validation()
 	test_committed_fees()
+	test_sell_all()
+	test_cargo_estimates()
 	print("\n%d passed, %d failed" % [passed, failed])
 	quit(1 if failed > 0 else 0)
 
@@ -849,3 +851,56 @@ func test_committed_fees() -> void:
 	var p := g.send_route("wagon-1", route)
 	var expected := int(p["legs"][1]["fee"]) + int(p["legs"][2]["fee"])
 	check(int(g.forecast()["committed_fees"]) == expected, "fees for the remaining legs are shown as committed")
+
+
+func test_sell_all() -> void:
+	var g := new_game("sellall", 10)
+	no_mouths(g)
+	var s := g.state
+	var ab := two_wagon_stops(g)
+	var a: String = ab[0]
+	var b: String = ab[1]
+	var y: String = first_produced_except(s["cities"][a], "Salt")
+	Economy.add_stock(home_wh(g), "Salt", 3, 3 * 67500)
+	Economy.add_stock(home_wh(g), "Stone", 2, 2 * 37500)
+	var route := {
+		"load": {"Salt": 3, "Stone": 2},
+		"stops": [
+			{"city": a, "sell_all": true, "sell": {"Stone": {"lots": 0, "min": 100000000}}, "buy": {y: {"lots": 4}}},
+			{"city": b, "sell_all": true, "sell": {}, "buy": {}},
+		],
+		"repeat": false,
+	}
+	check(bool(Transport.normalize_route(route)["stops"][0]["sell_all"]), "the sell-everything setting is kept")
+	check(Transport.normalize_route(route)["stops"][0]["sell"].has("Stone"), "a price limit without a lot count is kept")
+	var p := g.plan_route("wagon-1", route)
+	check(p["errors"].is_empty(), "a sell-everything route plans %s" % str(p["errors"]))
+	check(p["stops"][0]["onboard_after"] == {"Stone": 2, y: 4}, "at A: Salt sold, Stone kept by its minimum price, %s bought (%s)" % [y, str(p["stops"][0]["onboard_after"])])
+	check(p["stops"][1]["onboard"] == {"Stone": 2, y: 4}, "B is reached with what left A")
+	g.send_route("wagon-1", route)
+	g.advance_hours(int(p["days"]) * 24)
+	var w := Transport.vehicle(s, "wagon-1")
+	check(Transport.is_idle_at_home(s, w), "the route finished")
+	check(news_contains(g, "in %s: sold 3 Salt" % s["cities"][a]["name"]), "A sold everything on board except the protected Stone")
+	var both := "2 Stone, 4 %s" % y if Data.good_ids().find("Stone") < Data.good_ids().find(y) else "4 %s, 2 Stone" % y
+	check(news_contains(g, "in %s: sold %s" % [s["cities"][b]["name"], both]), "B sold everything on board, including goods bought at A")
+	check(Economy.stock(home_wh(g), "Stone") == 0 and Economy.stock(home_wh(g), y) == 0, "nothing comes home")
+
+
+func test_cargo_estimates() -> void:
+	var g := new_game("cargo", 10)
+	no_mouths(g)
+	var s := g.state
+	var ab := two_wagon_stops(g)
+	var y: String = s["cities"][ab[0]]["produces"][0]
+	Economy.add_stock(home_wh(g), "Salt", 5, 5 * 67500)
+	var route := {
+		"load": {"Salt": 5},
+		"stops": [{"city": ab[0], "sell": {"Salt": {"lots": 2}}, "buy": {y: {"lots": 3}}}],
+		"repeat": false,
+	}
+	var p := g.plan_route("wagon-1", route)
+	check(p["load_cargo"] == {"Salt": 5}, "leaves home with what was loaded")
+	check(p["stops"][0]["onboard"] == {"Salt": 5}, "arrives with what left home")
+	check(p["stops"][0]["onboard_after"] == {"Salt": 3, y: 3} or p["stops"][0]["onboard_after"] == {y: 3, "Salt": 3}, "leaves with the rest plus purchases")
+	check(p["home_cargo"].get("Salt", 0) == 3 and p["home_cargo"].get(y, 0) == 3, "comes home with what is left")

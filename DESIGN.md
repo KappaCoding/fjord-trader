@@ -170,6 +170,9 @@ One editor builds a journey: **load goods at home → any number of stops, each 
 trade route (1E). Each sell or buy can have a lot cap and a price limit (2A); stops whose limits aren't met are
 skipped and logged. Loading at home respects the warehouse reserves (5E). Stopping a repeating route lets it finish
 the current loop. Each route reports its cash result and its profit against cost per loop.
+- A stop can be set to **sell everything on board** on arrival (each good's minimum price still applies). The
+  option only exists where something is on board; the editor shows the cargo each stop arrives and leaves with,
+  and what comes home.
 
 ### Batch 3 — Population, food and growth ✅
 

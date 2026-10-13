@@ -9,7 +9,8 @@
 ##   loop     — this loop's books {n, sales, sold_cost, purchases, fees}
 ##   stats    — {loops, last_cash, last_profit, total_profit}
 ##
-## A route: {load: {good: lots}, stops: [{city, sell: {good: {lots, min}}, buy: {good: {lots, max}}}], repeat}
+## A route: {load: {good: lots}, stops: [{city, sell_all, sell: {good: {lots, min}}, buy: {good: {lots, max}}}], repeat}
+##   sell_all — sell every good on board on arrival (each good's min price still applies)
 ##   sell lots -1 = everything of that good on board; min / max = price limit per lot, 0 = none.
 extends RefCounted
 
@@ -195,15 +196,37 @@ static func normalize_route(route: Dictionary) -> Dictionary:
 		var sell := {}
 		for g in st.get("sell", {}):
 			var e: Dictionary = st["sell"][g]
-			if int(e.get("lots", 0)) != 0:
-				sell[g] = {"lots": int(e["lots"]), "min": maxi(0, int(e.get("min", 0)))}
+			if int(e.get("lots", 0)) != 0 or int(e.get("min", 0)) > 0:
+				sell[g] = {"lots": int(e.get("lots", 0)), "min": maxi(0, int(e.get("min", 0)))}
 		var buy := {}
 		for g in st.get("buy", {}):
 			var e: Dictionary = st["buy"][g]
 			if int(e.get("lots", 0)) > 0:
 				buy[g] = {"lots": int(e["lots"]), "max": maxi(0, int(e.get("max", 0)))}
-		stops.append({"city": String(st.get("city", "")), "sell": sell, "buy": buy})
+		stops.append({"city": String(st.get("city", "")), "sell_all": bool(st.get("sell_all", false)), "sell": sell, "buy": buy})
 	return {"load": to_load, "stops": stops, "repeat": bool(route.get("repeat", false))}
+
+
+## What a stop sells from the given cargo, in catalogue order: [[good, lots (-1 = all), min price]].
+static func sell_orders(stop: Dictionary, cargo: Dictionary) -> Array:
+	var out: Array = []
+	var sell_all := bool(stop.get("sell_all", false))
+	for g in Data.good_ids():
+		var e: Dictionary = stop["sell"].get(g, {})
+		if sell_all:
+			if Economy.stock(cargo, g) > 0:
+				out.append([g, -1, int(e.get("min", 0))])
+		elif not e.is_empty() and int(e.get("lots", 0)) != 0:
+			out.append([g, int(e["lots"]), int(e.get("min", 0))])
+	return out
+
+
+static func _lots_only(container: Dictionary) -> Dictionary:
+	var out := {}
+	for g in Data.good_ids():
+		if container.has(g) and int(container[g]["lots"]) > 0:
+			out[g] = int(container[g]["lots"])
+	return out
 
 
 static func route_names(state: Dictionary, route: Dictionary) -> String:
@@ -215,14 +238,17 @@ static func route_names(state: Dictionary, route: Dictionary) -> String:
 
 
 ## Checks and estimates a route without changing anything (prices as of now).
-## {errors, warnings, legs: [{from, to, days, fee, stops}], stops: [{city, onboard, sells, buys}],
-##  days, fees, sales, sales_profit, purchases, cash, profit, load_lots, first_arrival_t, home_t, full_path, capacity}
+## {errors, warnings, legs: [{from, to, days, fee, stops}], stops: [{city, onboard, onboard_after, sells, buys}],
+##  days, fees, sales, sales_profit, purchases, cash, profit, load_lots, load_cargo, home_cargo,
+##  first_arrival_t, home_t, full_path, capacity}
+## onboard / onboard_after / load_cargo / home_cargo are {good: lots}: cargo on arrival, on leaving, leaving home,
+## and coming home.
 static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictionary) -> Dictionary:
 	var route := normalize_route(route_in)
 	var r := {
 		"errors": [], "warnings": [], "legs": [], "stops": [], "days": 0, "fees": 0, "sales": 0,
 		"sales_profit": 0, "purchases": 0, "cash": 0, "profit": 0, "load_lots": 0,
-		"first_arrival_t": -1, "home_t": -1, "full_path": [], "capacity": 0,
+		"first_arrival_t": -1, "home_t": -1, "full_path": [], "capacity": 0, "load_cargo": {}, "home_cargo": {},
 	}
 	var v := vehicle(state, vehicle_id)
 	if v.is_empty():
@@ -293,21 +319,23 @@ static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictiona
 		r["load_lots"] = int(r["load_lots"]) + n
 	if int(r["load_lots"]) > cap:
 		r["errors"].append("Too much to load: %d lots, but %s carries %d." % [r["load_lots"], v["name"], cap])
+	r["load_cargo"] = _lots_only(onboard)
 
 	var sold_cost_total := 0
 	for i in stops.size():
 		var st: Dictionary = stops[i]
 		var c: String = st["city"]
 		var cname: String = state["cities"][c]["name"]
-		var est := {"city": c, "onboard": {}, "sells": [], "buys": []}
-		for g in onboard:
-			est["onboard"][g] = int(onboard[g]["lots"])
-		for g in Data.good_ids():
-			if not st["sell"].has(g):
-				continue
+		var est := {"city": c, "onboard": _lots_only(onboard), "onboard_after": {}, "sells": [], "buys": []}
+		if bool(st["sell_all"]):
 			anything = true
-			var want := int(st["sell"][g]["lots"])
-			var limit := int(st["sell"][g]["min"])
+			if Economy.total_lots(onboard) == 0:
+				r["warnings"].append("Stop %d (%s): nothing on board to sell." % [i + 1, cname])
+		for order in sell_orders(st, onboard):
+			anything = true
+			var g: String = order[0]
+			var want: int = order[1]
+			var limit: int = order[2]
 			var have := Economy.stock(onboard, g)
 			var n := have if want < 0 else mini(want, have)
 			if n <= 0:
@@ -353,7 +381,9 @@ static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictiona
 			Economy.add_stock(onboard, g, k, cost)
 			est["buys"].append({"good": g, "lots": k, "cost": cost})
 			r["purchases"] = int(r["purchases"]) + cost
+		est["onboard_after"] = _lots_only(onboard)
 		r["stops"].append(est)
+	r["home_cargo"] = _lots_only(onboard)
 
 	if not anything:
 		r["errors"].append("Give the vehicle something to do: load goods to sell, or choose goods to buy.")
@@ -459,11 +489,10 @@ static func _trade_at_stop(state: Dictionary, v: Dictionary, index: int) -> void
 	var sales := 0
 	var sold_cost := 0
 	var notes: PackedStringArray = []
-	for g in Data.good_ids():
-		if not st["sell"].has(g):
-			continue
-		var want := int(st["sell"][g]["lots"])
-		var limit := int(st["sell"][g]["min"])
+	for order in sell_orders(st, v["cargo"]):
+		var g: String = order[0]
+		var want: int = order[1]
+		var limit: int = order[2]
 		var have := Economy.stock(v["cargo"], g)
 		var n := have if want < 0 else mini(want, have)
 		if n <= 0:
