@@ -13,6 +13,7 @@ signal plan_with_vehicle(vehicle_id: String)
 signal stop_route(vehicle_id: String, on: bool)
 signal buy_vehicle(vtype: String)
 signal show_prices(good: String)
+signal buy_want(good: String)
 
 const Data := preload("res://engine/data.gd")
 const Market := preload("res://engine/market.gd")
@@ -26,6 +27,9 @@ var game: RefCounted
 var _title: RichTextLabel
 var _stage_bar: ProgressBar
 var _growth: RichTextLabel
+var _wants_head: RichTextLabel
+var _wants_box: VBoxContainer
+var _want_widgets := {}
 var _infra_box: VBoxContainer
 var _lines_box: VBoxContainer
 var _stock_box: VBoxContainer
@@ -53,11 +57,17 @@ func _ready() -> void:
 	add_child(_growth)
 	add_child(HSeparator.new())
 
+	_wants_head = Style.rich()
+	add_child(_wants_head)
+	_wants_box = VBoxContainer.new()
+	add_child(_wants_box)
+	add_child(HSeparator.new())
+
 	var infra_head := Style.heading("Infrastructure")
 	infra_head.text = "Infrastructure"
-	infra_head.tooltip_text = "One of each per stage. Housing, harbor and roads also add +0.5% growth each."
+	infra_head.tooltip_text = "Housing as often as you like (each costs more); harbor and roads once per stage. Each adds +0.5% growth."
 	add_child(infra_head)
-	var infra_note := Style.label("One of each per stage · housing, harbor and roads each add +0.5% growth", Style.MUTED, 12)
+	var infra_note := Style.label("Housing: as many as you like, each 50% dearer · harbor, roads: one per stage", Style.MUTED, 12)
 	add_child(infra_note)
 	_infra_box = VBoxContainer.new()
 	add_child(_infra_box)
@@ -110,7 +120,7 @@ func set_game(g: RefCounted) -> void:
 func _make_signature() -> String:
 	var s: Dictionary = game.state
 	var home: Dictionary = Economy.home(s)
-	var parts: PackedStringArray = [str(home["stage"]), str(home["lines"].size())]
+	var parts: PackedStringArray = [str(home["stage"]), str(home["lines"].size()), ",".join(PackedStringArray(home["wants"]))]
 	for good in Data.good_ids():
 		if home["warehouse"].has(good):
 			parts.append(good)
@@ -141,6 +151,26 @@ func _clear(box: Container) -> void:
 func _rebuild() -> void:
 	var s: Dictionary = game.state
 	var home: Dictionary = Economy.home(s)
+
+	_clear(_wants_box)
+	_want_widgets.clear()
+	var wg := GridContainer.new()
+	wg.columns = 3
+	wg.add_theme_constant_override("h_separation", 10)
+	for good in home["wants"]:
+		var info := Style.rich()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		wg.add_child(info)
+		var bonus := Style.right(Style.label("", Style.MUTED))
+		bonus.custom_minimum_size.x = 64
+		wg.add_child(bonus)
+		var btn := Button.new()
+		btn.text = "Buy…"
+		btn.custom_minimum_size.x = 70
+		btn.pressed.connect(func(): buy_want.emit(good))
+		wg.add_child(btn)
+		_want_widgets[good] = {"info": info, "bonus": bonus, "button": btn}
+	_wants_box.add_child(wg)
 
 	_clear(_infra_box)
 	_infra_widgets.clear()
@@ -294,6 +324,7 @@ func _update() -> void:
 	_title.text = "[font_size=20][b]%s[/b][/font_size]\n[color=#%s]Stage %d %s · [b]%s[/b] people · %d of %d lines[/color]" % [
 		home["name"], muted, stage, info["name"], Fmt.coins(int(home["pop"])), home["lines"].size(), int(info["max_lines"])]
 	_update_growth(s, home)
+	_update_wants(s, home)
 	_update_infra(s, home)
 	_update_lines(s, home)
 
@@ -335,8 +366,9 @@ func _update_growth(s: Dictionary, home: Dictionary) -> void:
 	var rate := float(b["rate"]) * 100.0
 	var col := Style.GOOD if rate > 0.0 else (Style.BAD if rate < 0.0 else Style.WARN)
 	var head := "Growth [b][color=#%s]%+.1f%% / month[/color][/b]" % [Style.hex(col), rate]
-	if bool(b["capped"]):
-		head += " [color=#%s](at the 5%% cap)[/color]" % muted
+	if bool(b["fed"]):
+		head += " [color=#%s]= base %.1f%%%s + wanted goods %.1f%%[/color]" % [
+			muted, float(b["base"]) * 100.0, " (capped)" if bool(b["capped"]) else "", float(b["wants"]) * 100.0]
 	lines.append(head)
 	if not eta.is_empty():
 		var prev_min := int(Economy.stage_info(int(home["stage"]))["min_pop"])
@@ -370,6 +402,52 @@ func _update_growth(s: Dictionary, home: Dictionary) -> void:
 	_growth.text = "\n".join(lines)
 
 
+func _update_wants(s: Dictionary, home: Dictionary) -> void:
+	var muted := Style.hex(Style.MUTED)
+	var pct := Economy.want_bonus(home) * 100.0
+	var days_left := ceili(float(home["want_timer_hours"]) / 24.0)
+	_wants_head.text = "[font_size=17][b]Your people want[/b][/font_size]  [color=#%s]+%.1f%% growth a month for each one in stock · they change in %s[/color]" % [
+		muted, pct, Style.days(days_left)]
+	var wh: Dictionary = home["warehouse"]
+	var idle := not Transport.idle_vehicles(s).is_empty()
+	for good in _want_widgets:
+		var w: Dictionary = _want_widgets[good]
+		var have := Economy.stock(wh, good)
+		var need := Economy.want_need_per_month(home, good)
+		var sellers := Transport.sellers_of(s, good)
+		var where := ""
+		if not sellers.is_empty():
+			var nearest: Dictionary = sellers[0]
+			where = "nearest: %s, %s by %s" % [s["cities"][nearest["city"]]["name"], Style.days(int(nearest["days"])),
+				String(Transport.label_of(nearest["type"])).to_lower()]
+		else:
+			where = "no city your vehicles reach sells it"
+		if have > 0:
+			w["info"].text = "[b][color=#%s]%s[/color][/b]  %d lot%s · uses %.1f a month · lasts ~%s\n[color=#%s]%s[/color]" % [
+				Style.hex(Style.GOOD), good, have, "" if have == 1 else "s", need, _months_text(float(have) / maxf(need, 0.001)), muted, where]
+			w["bonus"].text = "+%.1f%%" % pct
+			w["bonus"].add_theme_color_override("font_color", Style.GOOD)
+		else:
+			w["info"].text = "[b][color=#%s]%s[/color][/b]  [color=#%s]none in stock[/color] · uses %.1f a month\n[color=#%s]%s[/color]" % [
+				Style.hex(Style.WANT), good, Style.hex(Style.WARN), need, muted, where]
+			w["bonus"].text = "(+%.1f%%)" % pct
+			w["bonus"].add_theme_color_override("font_color", Style.MUTED)
+		var btn: Button = w["button"]
+		btn.disabled = sellers.is_empty() or not idle
+		if sellers.is_empty():
+			btn.tooltip_text = "No city your vehicles can reach sells %s" % good
+		elif not idle:
+			btn.tooltip_text = "All your vehicles are out; wait for one to come home"
+		else:
+			btn.tooltip_text = "Plan a trip to %s to buy %s and bring it home" % [s["cities"][sellers[0]["city"]]["name"], good]
+
+
+static func _months_text(months: float) -> String:
+	if months < 1.0:
+		return "%d days" % maxi(1, int(months * 30.0))
+	return "%d month%s" % [int(months), "" if int(months) == 1 else "s"]
+
+
 static func _duration(minutes: float) -> String:
 	if minutes < 60.0:
 		return "%d min" % int(ceil(minutes))
@@ -384,8 +462,15 @@ func _update_infra(s: Dictionary, home: Dictionary) -> void:
 		var info: Dictionary = Data.balance()["infrastructure"]["types"][kind]
 		var n := Economy.infra_count(home, kind)
 		var allowed := Economy.infra_allowed(home, kind)
-		w["name"].text = "%s  %d/%d" % [info["label"], n, allowed] if allowed > 0 else String(info["label"])
 		var btn: Button = w["button"]
+		if Economy.infra_repeatable(kind) and allowed > 0:
+			w["name"].text = "%s  ×%d" % [info["label"], n] if n > 0 else String(info["label"])
+			var hcost := Economy.infra_cost(home, kind)
+			btn.text = "Build · %s" % Fmt.coins(hcost)
+			btn.disabled = int(s["treasury"]) < hcost
+			btn.tooltip_text = "+15%% people at once. The next one at this stage costs %s; a new stage starts again from its own price." % Fmt.coins(int(round(hcost * float(Data.balance()["infrastructure"]["housing_price_growth"]))))
+			continue
+		w["name"].text = "%s  %d/%d" % [info["label"], n, allowed] if allowed > 0 else String(info["label"])
 		if allowed <= 0:
 			btn.text = "From Stage %d" % int(info["first_stage"])
 			btn.disabled = true

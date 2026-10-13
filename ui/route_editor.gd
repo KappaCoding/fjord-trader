@@ -714,10 +714,17 @@ func _recalc() -> void:
 	var return_fee := int(_plan.get("return_fee", 0))
 	if _home_cargo != null:
 		var back: Dictionary = _plan.get("home_cargo", {})
-		_home_cargo.text = "[b]Back at %s with:[/b] %s%s   [color=#%s]·  fee for the way home %s[/color]" % [
+		var home_city: Dictionary = Economy.home(s)
+		var wanted: PackedStringArray = []
+		for g in home_city["wants"]:
+			if int(back.get(g, 0)) > 0:
+				wanted.append(g)
+		_home_cargo.text = "[b]Back at %s with:[/b] %s%s   [color=#%s]·  fee for the way home %s[/color]%s" % [
 			home_name, _cargo_text(back, cap),
 			"  [color=#%s](unloaded into the warehouse at what it cost)[/color]" % muted if not back.is_empty() else "",
-			Style.hex(Style.BAD) if return_fee > 0 else muted, Fmt.signed(-return_fee)]
+			Style.hex(Style.BAD) if return_fee > 0 else muted, Fmt.signed(-return_fee),
+			"\n[color=#%s]Your people want %s: +%.1f%% growth a month each while it lasts.[/color]" % [
+				Style.hex(Style.GOOD), " and ".join(wanted), Economy.want_bonus(home_city) * 100.0] if not wanted.is_empty() else ""]
 
 	var lines: PackedStringArray = []
 	var profit := int(_plan["profit"])

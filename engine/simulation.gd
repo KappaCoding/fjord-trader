@@ -40,9 +40,18 @@ static func _step_hour(state: Dictionary, rng: RandomNumberGenerator) -> void:
 			Market.reroll_drift(cities[id], rng)
 	for id in state["city_order"]:
 		var city: Dictionary = cities[id]
+		var player: bool = city.get("owner", "") == "player"
+		if player and bool(city.get("wants_stale", false)):
+			News.add(state, Economy.reroll_player_wants(state, city, rng), News.KIND_CITY)
+			continue
 		city["want_timer_hours"] = int(city["want_timer_hours"]) - 1
 		if int(city["want_timer_hours"]) <= 0:
-			News.add(state, Market.rotate_wants(city, rng), News.KIND_MARKET)
+			if player:
+				Market.rotate_wants(city, rng, Economy.player_want_weights(state, city))
+				News.add(state, "Your people in %s now want %s (+%.1f%% growth a month each while in stock)." % [
+					city["name"], " and ".join(PackedStringArray(city["wants"])), Economy.want_bonus(city) * 100.0], News.KIND_CITY)
+			else:
+				News.add(state, Market.rotate_wants(city, rng), News.KIND_MARKET)
 
 
 ## Calendar date for a time in hours: {year, month, day, hour}. Year 1 starts in start_month.

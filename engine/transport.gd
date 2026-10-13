@@ -183,6 +183,30 @@ static func sell_options(state: Dictionary, good: String) -> Array:
 	return out
 
 
+## Cities that sell a good and how fast your vehicles get there from home, nearest first: [{city, days, type}]
+## (the fastest vehicle type you own for each city).
+static func sellers_of(state: Dictionary, good: String) -> Array:
+	var home_id: String = state["home_id"]
+	var owned := {}
+	for v in state["vehicles"]:
+		owned[v["type"]] = true
+	var out: Array = []
+	for id in state["city_order"]:
+		if id == home_id or not Market.city_sells(state, id, good):
+			continue
+		var best := {}
+		for vtype in type_order():
+			if not owned.has(vtype):
+				continue
+			var d := int(path_for(state, home_id, id, vtype)["days"])
+			if d > 0 and (best.is_empty() or d < int(best["days"])):
+				best = {"city": id, "days": d, "type": vtype}
+		if not best.is_empty():
+			out.append(best)
+	out.sort_custom(func(a, b): return int(a["days"]) < int(b["days"]) or (int(a["days"]) == int(b["days"]) and String(a["city"]) < String(b["city"])))
+	return out
+
+
 # ------------------------------------------------------------------ routes
 
 ## A clean copy of a route: integer quantities, zero entries dropped.

@@ -180,6 +180,19 @@ func _on_city_clicked(id: String) -> void:
 
 
 ## Buy/Sell in a city's market: a one-stop route with that good preset (-1 = as much as fits).
+## "Buy…" on a good your people want: a trip to the nearest city that sells it, buying about
+## six months' worth (at least 2 lots); the amount can be changed in the editor.
+func _on_buy_want(good: String) -> void:
+	var sellers := Transport.sellers_of(game.state, good)
+	if sellers.is_empty():
+		_message("Buy %s" % good, "No city your vehicles can reach sells %s." % good)
+		return
+	var lots := maxi(2, ceili(Economy.want_need_per_month(game.home(), good) * 6.0))
+	var route := {"load": {}, "stops": [{"city": sellers[0]["city"], "sell": {}, "buy": {good: {"lots": lots}}}], "repeat": false}
+	if not planner.open_for(game, "", route):
+		_message("Plan a route", "All your vehicles are busy. Wait for one to come home, or buy another.")
+
+
 func _on_plan_trip(dest: String, sell: Dictionary, buy: Dictionary) -> void:
 	var stop := {"city": dest, "sell": {}, "buy": {}}
 	for g in sell:
@@ -391,6 +404,7 @@ func _build_ui() -> void:
 	settlement.plan_with_vehicle.connect(_on_plan_with_vehicle)
 	settlement.buy_vehicle.connect(_on_buy_vehicle)
 	settlement.show_prices.connect(_on_show_prices)
+	settlement.buy_want.connect(_on_buy_want)
 
 	var center := VBoxContainer.new()
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL

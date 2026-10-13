@@ -29,10 +29,12 @@ static func impact_step(pop: int) -> float:
 	return 0.01
 
 
+## Your own cities' wants are goods your people use up (DESIGN 3J), not a market premium: their market
+## never pays extra for them (otherwise buying them next door and selling at home would print money).
 static func band_for(city: Dictionary, good_id: String) -> String:
 	if city["produces"].has(good_id):
 		return "surplus"
-	if city["wants"].has(good_id):
+	if city["wants"].has(good_id) and not bool(city.get("is_home", false)) and city.get("owner", "") != "player":
 		return "want"
 	return "neutral"
 
@@ -142,15 +144,19 @@ static func roll_want_timer(rng: RandomNumberGenerator) -> int:
 
 
 ## Picks new wants for a city (different from the old ones), moves goods between bands,
-## and returns a news line describing the change.
-static func rotate_wants(city: Dictionary, rng: RandomNumberGenerator) -> String:
+## and returns a news line describing the change. `weights` overrides the NPC rule (Geo.want_weights),
+## e.g. for the player's own cities.
+static func rotate_wants(city: Dictionary, rng: RandomNumberGenerator, weights := {}) -> String:
 	var old_wants: Array = city["wants"].duplicate()
-	var weights := Geo.want_weights(city)
+	if weights.is_empty():
+		weights = Geo.want_weights(city)
+	else:
+		weights = weights.duplicate()
 	for id in old_wants:
 		weights.erase(id)
 	var count := int(_mk()["wants_per_city"])
 	var new_wants := Geo.weighted_pick(rng, weights, count)
-	if new_wants.size() < count:
+	if new_wants.size() < count and not old_wants.is_empty():
 		new_wants = old_wants
 	city["wants"] = new_wants
 	var market: Dictionary = city["market"]

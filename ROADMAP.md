@@ -83,6 +83,15 @@ Notes:
   profit per day with the sale added; one click adds it as the next stop.
 - 297 headless engine tests.
 
+## Faster progression ✅ (after the route-planning playtest)
+
+- Your people want two goods; keeping them in stock adds growth on top of the 5% cap (+18% a month each at
+  Stage 1, less at later stages). Wants are used up, sold nearby, and change with time and at every stage.
+- Housing can be built repeatedly at rising prices.
+- Pacing with good play: Stage 2 ~20 min, Stage 3 ~1 h, Stage 4 ~2½ h at 1× (was ~2½ h / 5 h / 7½ h).
+- Settlement panel: "Your people want" with stock, use, nearest seller and a Buy… button.
+- 326 headless engine tests. Saves from earlier versions can't be loaded.
+
 ## Milestone 5 — A living world (next)
 
 NPC trade routes with visible vehicles, NPC deliveries into your home market (so you can buy at home),

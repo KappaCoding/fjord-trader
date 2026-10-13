@@ -46,7 +46,8 @@ The same price impact applies to NPC trade.
 
 **1C. Home market** ✅
 - Ravnsfjord has its own market with its own surplus/neutral/want modifiers, drift and want changes,
-  multiplied by **0.75** — a safety valve for cash, not a substitute for trading.
+  multiplied by **0.75** — a safety valve for cash, not a substitute for trading. Since 3J your own city's wants
+  are goods your people use up, so the home market no longer pays the want premium for them.
 - **NPCs can sell to your home market:** foreign NPC traders deliver goods into Ravnsfjord's market stock,
   which the player can then buy (e.g. food).
 - **NPCs can buy from you only by offer:** when a foreign trader wants goods from your warehouse, it makes
@@ -230,7 +231,7 @@ varies by seed, so most homes start in the Cold north and some in the Temperate 
 - Each city eats **1 lot of Grain or Fish per 2,500 population per month**, deducted continuously from the warehouse.
 - No food in stock → growth stops. After **90 days** without food, population declines **2% per month** until food returns.
 
-**3B. Growth formula** ✅ (per month, pro-rated continuously, **capped at 5%**)
+**3B. Growth formula** ✅ (per month, pro-rated continuously, **capped at 5%**; your people's wants add on top, 3J)
 | Condition | Growth |
 |---|---|
 | City is fed | 2% (base; no growth at all if unfed) |
@@ -255,11 +256,37 @@ Population feeds back into price-impact step size (1B) and how many NPC routes t
 **3F. Housing gives a population jump** ✅ (decided after the Milestone 2 playtest)
 Growth rates stay as in 3B. In addition, each **housing** upgrade adds **+15% population at once**, so investing
 speeds the climb to the next stage noticeably. The settlement panel shows the growth rate, what boosts or blocks it,
-and an estimate of when the next stage is reached.
+and an estimate of when the next stage is reached. (Housing became repeatable in 3K.)
+
+**3J. Your people's wants drive growth** ✅ (decided after the world-update playtest: "the game feels horrifically
+slow; no progression past buying new things")
+- Your city wants **2 goods**. Each one kept in your warehouse adds growth **on top of the 5% cap** (3B):
+  **+18% / +7% / +1.5% / +1% a month at Stage 1 / 2 / 3 / 4**. Unfed cities still don't grow.
+- Wanted goods are **used up**: goods worth **25 coins per person per month** each (so dear goods last longer;
+  2,000 people use 0.5 lots of Salt or 0.2 lots of Cloth a month). When one runs out, nothing is owed later.
+- What they want: not food, not what your own land yields, **at most one tier above your stage** (import-only goods
+  count as Tier 3), your own tier likeliest. Goods sold within **10 days**, then **20 days**, by a vehicle your
+  stage allows are strongly preferred, so a far good is only wanted when too few near ones exist.
+- Wants change every **4–8 months** like NPC wants, and **at every stage-up** (finer goods for a bigger city).
+- **Your own market pays no premium for what your people want** (otherwise buying it next door and selling it at
+  home would be a money loop). NPC cities' wants work as before (1B).
+- The settlement panel lists both wants with stock, use per month, how long it lasts, the nearest seller and a
+  **Buy…** button (a trip to the nearest seller for about six months' worth, at least 2 lots).
+
+**3K. Housing can be built again and again** ✅ (same playtest)
+Housing has no per-stage limit. Each one at the same stage costs **1.5×** the previous; a new stage starts again at
+its own price (1M / 10M / 100M / 1B). Each adds +15% people at once and +0.5% growth (inside the 5% cap).
+Harbor and roads stay one per stage.
+
+**Pacing target** (Stage 2 / 3 / 4, from the start, at 1×, with both wants kept in stock and two housings per
+stage): **~20 min / ~1 h / ~2½ h** (4 / 12 / 29 months). With the trips to fetch the wants it measures
+~24 min / ~70 min / ~2 h 40 min on average over 12 worlds. Without the wants it is as slow as before
+(Stage 2 after ~2 h 20 min). Base growth rates and stage thresholds are unchanged.
 
 **3G. Infrastructure** ✅
-One **housing**, **harbor** and **roads** upgrade can be built per stage (so up to 1 of each at Stage 1, 2 at Stage 2,
-and so on), each costing the current stage's price: **1M / 10M / 100M / 1B**. Each gives +0.5% growth (3B).
+One **harbor** and **roads** upgrade can be built per stage (so up to 1 of each at Stage 1, 2 at Stage 2, and so
+on), each costing the current stage's price: **1M / 10M / 100M / 1B**; **housing** as often as you like (3K).
+Each gives +0.5% growth (3B).
 - Housing: +15% population at once (3F).
 - Roads: **+25% wagon speed** per upgrade, stacking.
 - Harbor: **−10% sheltered-water and ocean trip fees** per upgrade, stacking.

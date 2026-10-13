@@ -19,9 +19,11 @@ setting up trade routes and competing with NPC traders across a procedurally gen
    10 lots a month (one every 3 days). **What can I make?** lists every good, whether your land and stage allow it,
    its inputs, and where it sells best.
 2. **Grow your settlement.** Your people eat Grain or Fish from the warehouse; with no food there is no growth.
-   The panel on the left shows the growth rate, what boosts it, what's missing, and when you reach the next stage.
-   **Infrastructure** speeds things up: housing adds 15% people at once, roads make wagons faster, a harbor cuts
-   water fees. Stage 2 (10,000 people) unlocks more lines and Tier 2 goods.
+   **Your people also want two goods** (shown on the left, under the growth rate). Keep each in your warehouse for a
+   big growth bonus (+18% a month each at Stage 1); they get used up, and they change every few months and at each
+   new stage. **Buy…** plans a trip to the nearest seller. **Housing** adds 15% people at once and can be built
+   again and again (each one costs more); roads make wagons faster, a harbor cuts water fees. Stage 2 (10,000
+   people) unlocks more lines and Tier 2 goods — with your people's wants supplied, in about 20 minutes.
 3. **Read the map.** Colours are climate zones (cold north, highlands, temperate, warm south, tropical islands);
    they decide what each town can produce. Blue lines are rivers, which barges can sail up. Route lines show how your
    vehicles travel from home: dashed sand = road (wagons), light blue = coast, fjord and river (barges), dotted blue =

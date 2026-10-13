@@ -75,6 +75,9 @@ static func init_player(state: Dictionary) -> void:
 	home["reserves"] = {}
 	home["infrastructure"] = {"housing": 0, "harbor": 0, "roads": 0, "retooling": 0}
 	home["infra_value"] = 0
+	home["housing_this_stage"] = 0
+	home["want_acc"] = {}
+	home["wants_stale"] = false
 	home["food_acc"] = 0.0
 	home["hours_without_food"] = 0
 	home["lines"] = []
@@ -458,17 +461,32 @@ static func infra_count(city: Dictionary, kind: String) -> int:
 	return int(city["infrastructure"].get(kind, 0))
 
 
-## How many of this kind the city's stage allows in total (one per stage, from the type's first stage).
+## Housing can be built again and again (DESIGN 3K); the others once per stage.
+static func infra_repeatable(kind: String) -> bool:
+	return bool(infra_cfg()["types"][kind].get("repeatable", false))
+
+
+## How many of this kind the city's stage allows in total (one per stage, from the type's first stage;
+## no limit for repeatable kinds once their first stage is reached).
 static func infra_allowed(city: Dictionary, kind: String) -> int:
 	var first := int(infra_cfg()["types"][kind]["first_stage"])
-	return maxi(0, int(city["stage"]) - first + 1)
+	if int(city["stage"]) < first:
+		return 0
+	if infra_repeatable(kind):
+		return 1 << 30
+	return int(city["stage"]) - first + 1
 
 
+## The next one's price at the city's stage. Housing gets dearer with each one built at the same stage
+## (× housing_price_growth); a new stage starts again from that stage's price.
 static func infra_cost(city: Dictionary, kind: String) -> int:
 	var stage := str(int(city["stage"]))
 	if kind == "retooling":
 		return int(infra_cfg()["retooling_cost_by_stage"].get(stage, -1))
-	return int(infra_cfg()["cost_by_stage"][stage])
+	var cost := float(infra_cfg()["cost_by_stage"][stage])
+	if kind == "housing":
+		cost *= pow(float(infra_cfg()["housing_price_growth"]), int(city.get("housing_this_stage", 0)))
+	return int(round(cost))
 
 
 static func build(state: Dictionary, city_id: String, kind: String) -> String:
@@ -489,6 +507,7 @@ static func build(state: Dictionary, city_id: String, kind: String) -> String:
 	city["infrastructure"][kind] = infra_count(city, kind) + 1
 	var text := "%s: built %s (%s)." % [city["name"], label.to_lower(), Fmt.coins(cost)]
 	if kind == "housing":
+		city["housing_this_stage"] = int(city.get("housing_this_stage", 0)) + 1
 		var before := int(city["pop"])
 		city["pop_exact"] = float(city["pop_exact"]) * (1.0 + float(infra_cfg()["housing_pop_jump"]))
 		city["pop"] = int(round(float(city["pop_exact"])))
@@ -536,6 +555,100 @@ static func _eat_one(city: Dictionary) -> bool:
 	return true
 
 
+# ------------------------------------------------------------------ your people's wants (DESIGN 3J)
+
+## Growth bonus for each wanted good in stock at the city's stage (on top of the capped base growth).
+static func want_bonus(city: Dictionary) -> float:
+	return float(growth_cfg()["want_bonus_by_stage"].get(str(int(city["stage"])), 0.0))
+
+
+## Lots of a wanted good the city uses up per month: a fixed value per person, so dear goods go slowly.
+static func want_need_per_month(city: Dictionary, good: String) -> float:
+	return float(city["pop"]) * float(growth_cfg()["want_coins_per_person_month"]) / float(Data.base_price(good))
+
+
+## For every good some city sells: the fewest days from `city` to a seller, with any vehicle type the player's
+## stage allows (base speed). Goods no such vehicle can fetch are left out.
+static func reachable_sold_goods(state: Dictionary, city: Dictionary) -> Dictionary:
+	var stage := int(city["stage"])
+	var types: Dictionary = Data.balance()["vehicles"]["types"]
+	var out := {}
+	for id in state["city_order"]:
+		var other: Dictionary = state["cities"][id]
+		if id == city["id"] or other.get("owner", "") == "player":
+			continue
+		var best := -1
+		for vtype in types:
+			if int(types[vtype]["min_stage"]) > stage:
+				continue
+			var d := int(Geo.best_path(state, city["id"], id, types[vtype]["route"], vtype, 1.0)["days"])
+			if d > 0 and (best < 0 or d < best):
+				best = d
+		if best > 0:
+			for g in other["produces"]:
+				if not out.has(g) or best < int(out[g]):
+					out[g] = best
+	return out
+
+
+## What a player city's people can want: not food, not what its own land yields, at most one tier above its
+## stage (import-only goods count as Tier 3). Its own tier is likeliest, and goods sold close by are strongly
+## preferred: each step out (within want_reach_days[0], within [1], anywhere a vehicle reaches, nowhere)
+## makes a good ten times less likely, so a far good is only wanted when too few near ones exist.
+static func player_want_weights(state: Dictionary, city: Dictionary) -> Dictionary:
+	var stage := int(city["stage"])
+	var top := stage + int(growth_cfg()["want_tiers_above_stage"])
+	var own_raw := Geo.raw_goods_for(city)
+	var sold := reachable_sold_goods(state, city)
+	var limits: Array = growth_cfg()["want_reach_days"]
+	var w := {}
+	for id in Data.good_ids():
+		if Data.is_food(id) or own_raw.has(id):
+			continue
+		var t := Data.tier(id)
+		if t == 0:
+			t = 3
+		if t > top:
+			continue
+		var weight := 3.0 if t == stage else (2.0 if t > stage else 1.0)
+		var step := limits.size() + 1  # not sold where a vehicle reaches
+		if sold.has(id):
+			step = limits.size()
+			for k in limits.size():
+				if int(sold[id]) <= int(limits[k]):
+					step = k
+					break
+		w[id] = weight * pow(0.1, step)
+	return w
+
+
+## Picks the player's home wants for its stage (new game, stage-up). Returns the news text.
+static func reroll_player_wants(state: Dictionary, city: Dictionary, rng: RandomNumberGenerator) -> String:
+	city["wants"] = []  # nothing is excluded as "the old wants"
+	Market.rotate_wants(city, rng, player_want_weights(state, city))
+	city["wants_stale"] = false
+	var bonus := want_bonus(city) * 100.0
+	return "Your people in %s want %s. Keep them in your warehouse for +%.1f%% growth a month each." % [
+		city["name"], " and ".join(PackedStringArray(city["wants"])), bonus]
+
+
+## Uses up wanted goods from the warehouse. When one runs out nothing is owed later.
+static func _use_wants(city: Dictionary, hours: int) -> void:
+	var hpm := float(Data.hours_per_month())
+	var old: Dictionary = city.get("want_acc", {})
+	var acc := {}
+	for g in city["wants"]:
+		var a := float(old.get(g, 0.0)) + want_need_per_month(city, g) * float(hours) / hpm
+		while a >= 1.0:
+			if stock(city["warehouse"], g) <= 0:
+				a = 0.0
+				break
+			remove_stock(city["warehouse"], g, 1)
+			a -= 1.0
+		acc[g] = a
+	city["want_acc"] = acc
+
+
 static func treasury_threshold(city: Dictionary) -> int:
 	return int(growth_cfg()["treasury_threshold_stage_1"]) * int(pow(10.0, float(int(city["stage"]) - 1)))
 
@@ -553,8 +666,9 @@ static func growth_breakdown(state: Dictionary, city: Dictionary) -> Dictionary:
 			parts.append(["Starving: no food for %d+ days" % int(g["starving_after_days"]), -float(g["starving_decline"])])
 		else:
 			parts.append(["No Grain or Fish in stock — growth has stopped", 0.0])
-		return {"rate": -float(g["starving_decline"]) if starving else 0.0, "fed": false, "starving": starving,
-			"capped": false, "parts": parts, "missing": [["Get Grain or Fish into your warehouse", float(g["fed"])]]}
+		var r := -float(g["starving_decline"]) if starving else 0.0
+		return {"rate": r, "base": r, "wants": 0.0, "fed": false, "starving": starving, "capped": false, "parts": parts,
+			"missing": [["Get Grain or Fish into your warehouse", float(g["fed"])]], "missing_wants": []}
 	parts.append(["Fed", float(g["fed"])])
 	var need := food_need_per_month(city)
 	var months := int(g["stock_months"])
@@ -583,11 +697,23 @@ static func growth_breakdown(state: Dictionary, city: Dictionary) -> Dictionary:
 		parts.append(["Both %s" % " and ".join(PackedStringArray(goods)), float(g["variety_bonus"])])
 	else:
 		missing.append(["Stock both %s" % " and ".join(PackedStringArray(goods)), float(g["variety_bonus"])])
-	var total := 0.0
+	var base := 0.0
 	for p in parts:
-		total += float(p[1])
+		base += float(p[1])
 	var cap := float(g["cap"])
-	return {"rate": minf(total, cap), "fed": true, "starving": false, "capped": total > cap, "parts": parts, "missing": missing}
+	# Wanted goods come on top of the capped base (DESIGN 3J).
+	var wants := 0.0
+	var want_parts: Array = []
+	var missing_wants: Array = []
+	var bonus := want_bonus(city)
+	for w in city.get("wants", []):
+		if stock(city["warehouse"], w) > 0:
+			want_parts.append(["%s for your people" % w, bonus])
+			wants += bonus
+		else:
+			missing_wants.append(["Bring %s home" % w, bonus])
+	return {"rate": minf(base, cap) + wants, "base": minf(base, cap), "wants": wants, "fed": true, "starving": false,
+		"capped": base > cap, "parts": parts + want_parts, "missing": missing, "missing_wants": missing_wants}
 
 
 static func step_food_growth(state: Dictionary, city: Dictionary, hours: int) -> void:
@@ -603,6 +729,7 @@ static func step_food_growth(state: Dictionary, city: Dictionary, hours: int) ->
 		city["hours_without_food"] = 0
 	else:
 		city["hours_without_food"] = int(city["hours_without_food"]) + hours
+	_use_wants(city, hours)
 	var rate := float(growth_breakdown(state, city)["rate"])
 	if rate != 0.0:
 		city["pop_exact"] = float(city["pop_exact"]) * pow(1.0 + rate, float(hours) / hpm)
@@ -616,6 +743,8 @@ static func _check_stage(state: Dictionary, city: Dictionary) -> void:
 		if int(city["pop"]) < int(nxt["min_pop"]):
 			return
 		city["stage"] = int(nxt["stage"])
+		city["housing_this_stage"] = 0
+		city["wants_stale"] = true  # the simulation picks finer wants for the new stage (it holds the RNG)
 		News.add(state, "%s has grown into a %s (Stage %d)! Up to %d production lines and Tier %d goods are unlocked." % [
 			city["name"], String(nxt["name"]).to_lower(), int(nxt["stage"]), int(nxt["max_lines"]), int(nxt["stage"])], News.KIND_CITY)
 

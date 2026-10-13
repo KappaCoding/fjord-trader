@@ -11,7 +11,7 @@ const Transport := preload("res://engine/transport.gd")
 const News := preload("res://engine/news.gd")
 
 ## Bump when the state layout changes; older saves are refused rather than loaded wrongly.
-const STATE_VERSION := 4
+const STATE_VERSION := 5
 
 var state: Dictionary = {}
 var rng := RandomNumberGenerator.new()
@@ -30,6 +30,7 @@ func new_game(seed_text: String, npc_count: int) -> void:
 	var site := "a fjord" if home["site"] == "fjord" else "the open coast"
 	News.add(state, "A new world of %d cities. Your settlement, %s, lies on %s." % [
 		int(state["npc_count"]) + 1, home["name"], site], News.KIND_CITY)
+	News.add(state, Economy.reroll_player_wants(state, home, rng), News.KIND_CITY)
 
 
 func advance_hours(hours: int) -> void:

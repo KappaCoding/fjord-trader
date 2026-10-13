@@ -61,6 +61,9 @@ func _init() -> void:
 	test_cargo_estimates()
 	test_stop_net()
 	test_sale_options()
+	# Faster growth (3J, 3K)
+	test_player_wants()
+	test_growth_pacing()
 	# Geography (Batch 2d)
 	test_geography()
 	test_travel_speed()
@@ -572,6 +575,157 @@ func test_food_and_growth() -> void:
 	check(int(eta["stage"]) == 2 and float(eta["months"]) > 0.0, "the next stage has a time estimate")
 
 
+# ------------------------------------------------------------------ Your people's wants, faster growth (3J, 3K)
+
+func test_player_wants() -> void:
+	var rules_ok := true
+	var reachable := 0
+	var near := 0
+	var total := 0
+	var variety := {}
+	for i in 12:
+		var g := new_game("wants-%d" % i, 20)
+		var h := g.home()
+		var sold := Economy.reachable_sold_goods(g.state, h)
+		if h["wants"].size() != 2:
+			rules_ok = false
+		for w in h["wants"]:
+			variety[w] = true
+			total += 1
+			var t := Data.tier(w) if Data.tier(w) != 0 else 3
+			if Data.is_food(w) or Geo.raw_goods_for(h).has(w) or t > 2:
+				rules_ok = false
+			if sold.has(w):
+				reachable += 1
+				if int(sold[w]) <= 20:
+					near += 1
+	check(rules_ok, "home wants: two goods, never food or its own land's goods, at most one tier above the stage")
+	check(reachable == total, "every home want is sold somewhere a wagon or barge can reach (%d/%d)" % [reachable, total])
+	check(near * 4 >= total * 3, "most are sold within 20 days (%d/%d)" % [near, total])
+	check(variety.size() >= 4, "starts vary: %d different wanted goods over 12 worlds" % variety.size())
+	var gm := new_game("wantmarket", 20)
+	var hm := gm.home()
+	var neutral := true
+	for gid in Data.good_ids():
+		if hm["market"][gid]["band"] != "neutral":
+			neutral = false
+	check(neutral, "your home market pays no premium for what your people want (no buy-next-door, sell-at-home loop)")
+
+	var g := new_game("wantgrowth", 20)
+	var s := g.state
+	var h := g.home()
+	var a: String = h["wants"][0]
+	var b: String = h["wants"][1]
+	var w1 := Economy.want_bonus(h)
+	check(is_equal_approx(w1, 0.18), "Stage 1: +18%% per wanted good")
+	var none := Economy.growth_breakdown(s, h)
+	Economy.add_stock(h["warehouse"], a, 5, 0)
+	check(float(Economy.growth_breakdown(s, h)["rate"]) == 0.0, "no food, no growth — wanted goods don't change that")
+	Economy.add_stock(h["warehouse"], "Grain", 10, 0)
+	Economy.add_stock(h["warehouse"], "Fish", 10, 0)
+	h["infrastructure"]["harbor"] = 1
+	h["infrastructure"]["roads"] = 1
+	var one := Economy.growth_breakdown(s, h)
+	check(is_equal_approx(float(one["base"]), 0.05) and bool(one["capped"]), "the base is still capped at 5%%")
+	check(is_equal_approx(float(one["rate"]), 0.05 + w1), "one wanted good adds its bonus on top of the cap (%.3f)" % float(one["rate"]))
+	check(one["missing_wants"].size() == 1 and String(one["missing_wants"][0][0]).contains(b), "the other one is listed as missing")
+	Economy.add_stock(h["warehouse"], b, 5, 0)
+	check(is_equal_approx(float(Economy.growth_breakdown(s, h)["rate"]), 0.05 + 2.0 * w1), "both: twice the bonus")
+	check(none["missing"].size() > 0, "breakdown still explains the base")
+
+	var gc := new_game("wantuse", 20)  # no food: the population holds still while we measure
+	var hc := gc.home()
+	var c: String = hc["wants"][0]
+	set_pop(gc, 8000)
+	var need := Economy.want_need_per_month(hc, c)
+	check(is_equal_approx(need, 8000.0 * 25.0 / float(Data.base_price(c))), "people use wanted goods worth 25 each a month")
+	Economy.add_stock(hc["warehouse"], c, 40, 0)
+	gc.advance_hours(Data.hours_per_month())
+	var used := 40 - Economy.stock(hc["warehouse"], c)
+	check(used == int(need), "a month uses what they need (%d of %.2f)" % [used, need])
+
+	var g2 := new_game("wantempty", 20)
+	var h2 := g2.home()
+	var x: String = h2["wants"][0]
+	h2["want_acc"] = {x: 0.99}
+	g2.advance_hours(24)
+	Economy.add_stock(h2["warehouse"], x, 1, 0)
+	g2.advance_hours(1)
+	check(Economy.stock(h2["warehouse"], x) == 1, "running out leaves nothing owed: a new lot isn't eaten at once")
+
+	var g3 := new_game("wantstage", 20)
+	var h3 := g3.home()
+	Economy.add_stock(h3["warehouse"], "Grain", 50, 0)
+	set_pop(g3, 10000)
+	g3.advance_hours(1)
+	check(int(h3["stage"]) == 2 and not bool(h3["wants_stale"]), "reaching Stage 2 picks new wants straight away")
+	var told := 0
+	for entry in g3.state["news"]:
+		if String(entry["text"]).contains("Your people in %s want" % h3["name"]):
+			told += 1
+	check(told == 2, "and says what they are (at the start and at Stage 2)")
+	var tiers_ok := true
+	for w in h3["wants"]:
+		if Data.tier(w) > 3:
+			tiers_ok = false
+	check(tiers_ok and h3["wants"].size() == 2, "Stage 2 wants go up to Tier 3 (%s)" % str(h3["wants"]))
+	h3["want_timer_hours"] = 1
+	g3.advance_hours(1)
+	var rot_ok := true
+	for w in h3["wants"]:
+		if Data.is_food(w) or Geo.raw_goods_for(h3).has(w):
+			rot_ok = false
+	check(rot_ok and news_contains(g3, "now want"), "when the wants change, they follow the same rules")
+
+
+## Good play: fed with both foods and 3 months stored, money in the bank, both wanted goods in stock,
+## two housings at each stage. Targets (DESIGN 3J): Stage 2 ~20 min, Stage 3 ~1 h, Stage 4 ~2.5 h at 1×.
+func test_growth_pacing() -> void:
+	var good := _months_to_stages("pace", true, 2)
+	var minutes_per_month := 30.0 * float(Data.balance()["clock"]["seconds_per_day_at_1x"]) / 60.0
+	check(good.size() == 3, "good play reaches Stage 4 (%s)" % str(good))
+	if good.size() == 3:
+		check(good[0] >= 3 and good[0] <= 5, "Stage 2 after %d months = %.0f min at 1× (target ~20)" % [good[0], good[0] * minutes_per_month])
+		check(good[1] >= 10 and good[1] <= 14, "Stage 3 after %d months = %.0f min (target ~60)" % [good[1], good[1] * minutes_per_month])
+		check(good[2] >= 26 and good[2] <= 34, "Stage 4 after %d months = %.0f min (target ~150)" % [good[2], good[2] * minutes_per_month])
+	var lazy := _months_to_stages("pace", false, 0)
+	check(lazy.is_empty() or lazy[0] > 20, "without wanted goods or extra housing it's far slower (%s)" % str(lazy))
+
+
+func _months_to_stages(seed_text: String, supply_wants: bool, housing_per_stage: int) -> Array:
+	var g := new_game(seed_text, 20)
+	var s := g.state
+	var h := g.home()
+	var marks: Array = []
+	var built := 0
+	for month in 40:
+		s["treasury"] = 100000000000
+		while built < housing_per_stage:
+			g.build("housing")
+			built += 1
+		for f in ["Grain", "Fish"]:
+			if Economy.stock(h["warehouse"], f) < 300:
+				Economy.add_stock(h["warehouse"], f, 300, 0)
+		if supply_wants:
+			for w in h["wants"]:
+				if Economy.stock(h["warehouse"], w) < 300:
+					Economy.add_stock(h["warehouse"], w, 300, 0)
+		var stage := int(h["stage"])
+		for d in 30:
+			g.advance_hours(24)
+			if supply_wants:
+				for w in h["wants"]:
+					if Economy.stock(h["warehouse"], w) < 50:
+						Economy.add_stock(h["warehouse"], w, 300, 0)
+		if int(h["stage"]) > stage:
+			for k in int(h["stage"]) - stage:
+				marks.append(month + 1)
+			built = 0
+		if int(h["stage"]) >= 4:
+			break
+	return marks
+
+
 func test_starvation() -> void:
 	var g := new_game("starve", 10)
 	var h := g.home()
@@ -611,7 +765,11 @@ func test_infrastructure() -> void:
 	check(int(s["treasury"]) == 3000000 - 1000000, "Stage 1 infrastructure costs 1,000,000")
 	check(int(h["pop"]) == 2300, "housing adds 15%% population at once (%d)" % int(h["pop"]))
 	check(g.net_worth() == worth, "infrastructure counts toward net worth at cost")
-	check(g.build("housing") != "", "only one housing per stage")
+	check(Economy.infra_cost(h, "housing") == 1500000, "the next housing at this stage costs 50%% more (%d)" % Economy.infra_cost(h, "housing"))
+	check(g.build("housing") == "" and int(s["treasury"]) == 500000, "housing can be built again (3K)")
+	check(int(h["pop"]) == int(round(2000 * 1.15 * 1.15)), "each housing adds another 15%% (%d)" % int(h["pop"]))
+	check(Economy.infra_cost(h, "housing") == 2250000, "and the one after that 50%% more again")
+	s["treasury"] = 2000000
 	check(g.build("retooling").contains("Stage 2"), "the retooling works need Stage 2")
 	check(g.build("roads") == "", "build roads")
 	check(int(Transport.path_for(s, s["home_id"], far_city, "wagon")["days"]) < wagon_days, "roads make wagons faster (%d → %d days)" % [wagon_days, int(Transport.path_for(s, s["home_id"], far_city, "wagon")["days"])])
@@ -619,8 +777,11 @@ func test_infrastructure() -> void:
 	check(Transport.trip_fee(s, "barge", 10) == int(round(barge_fee * 0.9)), "a harbor cuts water fees by 10%")
 	check(Transport.trip_fee(s, "wagon", 10) == 5000, "the harbor doesn't change road fees")
 	check(g.build("roads") != "", "not enough money or already built shows an error")
-	h["stage"] = 2
 	s["treasury"] = 100000000
+	check(g.build("roads").contains("Stage 2"), "roads stay one per stage")
+	set_pop(g, 10000)
+	g.advance_hours(1)
+	check(int(h["stage"]) == 2 and Economy.infra_cost(h, "housing") == 10000000, "a new stage starts housing again at its own price")
 	check(g.build("retooling") == "" and Economy.retool_days(h) == 12, "the retooling works cut downtime to 12 days")
 	check(int(s["ledger"]["current"]["infrastructure"]) > 0, "infrastructure spending is in the books")
 
