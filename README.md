@@ -22,9 +22,12 @@ setting up trade routes and competing with NPC traders across a procedurally gen
    The panel on the left shows the growth rate, what boosts it, what's missing, and when you reach the next stage.
    **Infrastructure** speeds things up: housing adds 15% people at once, roads make wagons faster, a harbor cuts
    water fees. Stage 2 (10,000 people) unlocks more lines and Tier 2 goods.
-3. **Read the map.** Lines show the routes your vehicles use from home: dashed sand = road (wagons), light blue =
-   sheltered water (barges), dotted blue = open sea (ocean ships, from Stage 3). Hollow cities can't be reached by
-   any vehicle you own. Click a city for its market and *Getting there*.
+3. **Read the map.** Colours are climate zones (cold north, highlands, temperate, warm south, tropical islands);
+   they decide what each town can produce. Blue lines are rivers, which barges can sail up. Route lines show how your
+   vehicles travel from home: dashed sand = road (wagons), light blue = coast, fjord and river (barges), dotted blue =
+   open sea (ocean ships, from Stage 3). Hollow cities can't be reached by any vehicle you own.
+   **Scroll to zoom, drag to pan, double-click (or Fit map) to see everything.** Click the legend to hide it.
+   Click a city for its market and *Getting there*.
 4. **Find a market.** Pick a good under *Prices* (or click a good's name) to colour every city by what it pays.
 5. **Trade with routes.** Press **Buy**/**Sell** in a city's market or **Plan route** on a vehicle. A route loads goods
    at home, visits one or more stops (sell some goods, buy others at each), and comes home. Tick **Repeat** to make it
@@ -40,7 +43,7 @@ setting up trade routes and competing with NPC traders across a procedurally gen
 | 1, 2, 3 or **1× 2× 4×** | Game speed (1× = one game day every 10 seconds) |
 | F11 | Fullscreen on/off |
 | Esc | Pause (the settings menu comes later) |
-| **Game ▾** | New world (seed + city count), Save, Load |
+| **Game ▾** | New world (seed + city count, 12–30), Save, Load |
 
 The game is laid out for 1920×1080 and scales to your window.
 

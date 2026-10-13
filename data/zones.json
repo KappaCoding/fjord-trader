@@ -1,0 +1,43 @@
+{
+	"_comment": "Climate zones (DESIGN 2d-A). raw = raw goods a town in the zone can produce; processed = goods NPC towns there tend to make once big enough. Fish needs water (coast, fjord or river) in every zone; river towns can also farm Grain.",
+	"order": ["cold", "highlands", "temperate", "warm", "tropics"],
+	"zones": {
+		"cold": {
+			"label": "Cold north",
+			"color": "5f6f6b",
+			"raw": ["Timber", "Stone"],
+			"processed": ["Furniture", "Glass", "Ships"],
+			"culture": "northern"
+		},
+		"highlands": {
+			"label": "Highlands",
+			"color": "7d7564",
+			"raw": ["Stone", "Iron Ore", "Coal", "Wool"],
+			"processed": ["Cloth", "Steel", "Tools", "Machinery"],
+			"culture": "northern"
+		},
+		"temperate": {
+			"label": "Temperate",
+			"color": "4f6c44",
+			"raw": ["Grain", "Wool", "Timber"],
+			"processed": ["Cloth", "Furniture", "Tools", "Ships"],
+			"culture": "northern"
+		},
+		"warm": {
+			"label": "Warm south",
+			"color": "8e7d4c",
+			"raw": ["Wine", "Salt", "Grain"],
+			"processed": ["Glass", "Medicine", "Jewelry"],
+			"culture": "southern"
+		},
+		"tropics": {
+			"label": "Tropics",
+			"color": "3f7b56",
+			"raw": ["Spices", "Gold", "Timber", "Salt"],
+			"processed": ["Medicine", "Jewelry", "Furniture"],
+			"culture": "eastern"
+		}
+	},
+	"water_goods": ["Fish"],
+	"river_goods": ["Grain"]
+}

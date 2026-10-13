@@ -6,6 +6,7 @@ signal sell_home(good: String)
 signal show_prices(good: String)
 
 const Data := preload("res://engine/data.gd")
+const Geo := preload("res://engine/geo.gd")
 const Market := preload("res://engine/market.gd")
 const Economy := preload("res://engine/economy.gd")
 const Transport := preload("res://engine/transport.gd")
@@ -160,14 +161,14 @@ func _idle_vehicle_can_reach() -> bool:
 
 
 func _refresh_header(c: Dictionary, home: bool) -> void:
-	var site: String = "overseas port" if c["region"] == "overseas" else {"fjord": "fjord", "coast": "open coast", "inland": "inland"}[c["site"]]
+	var site: String = "overseas port" if c["region"] == "overseas" else {"fjord": "fjord town", "coast": "coastal town", "river": "river town", "inland": "inland town"}[c["site"]]
 	var lines: PackedStringArray = []
 	var title := "[font_size=21][b]%s[/b][/font_size]" % c["name"]
 	if home:
 		title += "  [color=#%s]your settlement[/color]" % Style.hex(Style.HOME)
 	lines.append(title)
-	lines.append("[color=#%s]%s · %s · %s climate · population %s[/color]" % [
-		Style.hex(Style.MUTED), String(c["culture"]).capitalize(), site, c["climate"], Fmt.coins(int(c["pop"]))])
+	lines.append("[color=#%s]%s · %s · population %s[/color]" % [
+		Style.hex(Style.MUTED), Geo.zone_label(c["zone"]), site, Fmt.coins(int(c["pop"]))])
 	var produces: Array = Economy.producible_goods(c) if home else c["produces"]
 	lines.append("%s: [color=#%s]%s[/color]" % ["Can produce now" if home else "Produces", Style.hex(Style.SURPLUS), ", ".join(PackedStringArray(produces))])
 	var days_left := ceili(float(c["want_timer_hours"]) / 24.0)

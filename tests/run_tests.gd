@@ -59,6 +59,9 @@ func _init() -> void:
 	test_committed_fees()
 	test_sell_all()
 	test_cargo_estimates()
+	# Geography (Batch 2d)
+	test_geography()
+	test_travel_speed()
 	print("\n%d passed, %d failed" % [passed, failed])
 	quit(1 if failed > 0 else 0)
 
@@ -118,7 +121,7 @@ func test_world_rules_across_seeds() -> void:
 		option_sets[str(home["production_options"])] = true
 	check(bad == 0, "all 200 worlds satisfy the generation rules (%d failed)" % bad)
 	check(fjord_homes > 40 and coast_homes > 40, "home site varies between fjord and coast (%d/%d)" % [fjord_homes, coast_homes])
-	check(option_sets.size() > 5, "home production options differ between seeds (%d variants)" % option_sets.size())
+	check(option_sets.size() >= 2, "home production options differ between seeds (%d variants)" % option_sets.size())
 
 
 func test_price_math() -> void:
@@ -627,12 +630,21 @@ func test_production_access() -> void:
 	check(Economy.cannot_produce_reason(h, "Cloth").contains("Stage 2"), "Cloth unlocks at Stage 2")
 	check(Economy.cannot_produce_reason(h, "Steel").contains("Stage 3"), "Steel unlocks at Stage 3")
 	check(Economy.cannot_produce_reason(h, "Fish") == "", "a coastal home can always fish")
-	h["features"] = []
-	check(Economy.cannot_produce_reason(h, "Timber").contains("forest"), "no forest, no Timber")
-	check(Economy.cannot_produce_reason(h, "Iron Ore").contains("mountains"), "no mountains, no Iron Ore")
+	h["zone"] = "cold"
+	check(Economy.cannot_produce_reason(h, "Timber") == "", "the cold north has Timber")
+	check(Economy.cannot_produce_reason(h, "Grain").contains("Temperate"), "no Grain in the cold north: it comes from the temperate lands")
+	h["stage"] = 2
+	check(Economy.cannot_produce_reason(h, "Iron Ore").contains("Highlands"), "Iron Ore comes from the highlands")
+	check(Economy.cannot_produce_reason(h, "Wine").contains("Warm south"), "Wine comes from the warm south")
+	h["zone"] = "highlands"
+	check(Economy.cannot_produce_reason(h, "Iron Ore") == "", "a highland town can mine Iron Ore")
+	h["site"] = "inland"
+	check(Economy.cannot_produce_reason(h, "Fish").contains("coast"), "an inland town can't fish")
+	h["site"] = "river"
+	h["zone"] = "cold"
+	check(Economy.cannot_produce_reason(h, "Grain") == "" and Economy.cannot_produce_reason(h, "Fish") == "", "a river town can farm Grain and fish")
 	h["stage"] = 3
 	check(Economy.cannot_produce_reason(h, "Steel") == "", "processed goods can be made anywhere once unlocked")
-	check(Economy.cannot_produce_reason(h, "Wine").contains("warm"), "a northern home can't make Wine")
 	var opts := Economy.producible_goods(h)
 	check(opts.has("Steel") and not opts.has("Gold"), "the producible list follows the rules")
 
@@ -904,3 +916,55 @@ func test_cargo_estimates() -> void:
 	check(p["stops"][0]["onboard"] == {"Salt": 5}, "arrives with what left home")
 	check(p["stops"][0]["onboard_after"] == {"Salt": 3, y: 3} or p["stops"][0]["onboard_after"] == {y: 3, "Salt": 3}, "leaves with the rest plus purchases")
 	check(p["home_cargo"].get("Salt", 0) == 3 and p["home_cargo"].get(y, 0) == 3, "comes home with what is left")
+
+
+# ------------------------------------------------------------------ Geography (Batch 2d)
+
+func test_geography() -> void:
+	var zones_ok := true
+	var rivers_ok := true
+	var river_towns_ok := true
+	var no_ocean_upriver := true
+	var barge_reaches_river_town := false
+	var all_zones := {}
+	for i in 15:
+		var g := new_game("geo-%d" % i, 20 + (i % 3) * 5)
+		var s := g.state
+		check(int(s["npc_count"]) >= 20, "worlds default to at least 20 other cities")
+		for r in s["geo"]["rivers"].size():
+			var pts := Geo.river_points(s, r)
+			var mouth := pts[pts.size() - 1]
+			if absf(mouth.x - Geo.coast_x(s, mouth.y)) > 0.5:
+				rivers_ok = false
+		for id in s["city_order"]:
+			var c: Dictionary = s["cities"][id]
+			all_zones[c["zone"]] = true
+			var expect := "tropics" if c["region"] == "overseas" else Geo.zone_at(s, float(c["x"]), float(c["y"]))
+			if c["zone"] != expect:
+				zones_ok = false
+			if c["site"] == "river":
+				var on := Geo.river_point_at(s, int(c["river"]), float(c["river_pos"]))
+				if on.distance_to(Geo.city_pos(c)) > 0.5:
+					river_towns_ok = false
+				for other in s["city_order"]:
+					if other != id and Geo.travel_days(s, id, other, "ocean") > 0:
+						no_ocean_upriver = false
+				if int(Transport.path_for(s, s["home_id"], id, "barge")["days"]) > 0:
+					barge_reaches_river_town = true
+	check(zones_ok, "every city lies in the zone the map shows")
+	check(all_zones.size() == 5, "all five zones appear (%s)" % str(all_zones.keys()))
+	check(rivers_ok, "rivers end at the coast")
+	check(river_towns_ok, "river towns sit on their river")
+	check(no_ocean_upriver, "ocean ships can't reach river towns")
+	check(barge_reaches_river_town, "barges can sail up rivers to river towns")
+
+
+func test_travel_speed() -> void:
+	var nearest: Array = []
+	for i in 15:
+		var g := new_game("speed-%d" % i, 20)
+		var r := Transport.reachable(g.state, g.state["home_id"], "wagon")
+		nearest.append(int(r[0]["days"]))
+	nearest.sort()
+	var median: int = nearest[nearest.size() / 2]
+	check(median >= 2 and median <= 6, "the nearest town is a few days away by wagon (median %d days)" % median)

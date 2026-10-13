@@ -165,6 +165,9 @@ func _best_market(s: Dictionary, good: String) -> String:
 		if opt["reach"].is_empty():
 			continue
 		var r: Dictionary = opt["reach"][0]
+		for alt in opt["reach"]:
+			if int(alt["days"]) < int(r["days"]):
+				r = alt
 		return "[color=#%s]%s[/color] in %s [color=#%s](%s %s)[/color]" % [
 			Style.hex(Style.band_color(opt["band"])), Fmt.coins(opt["price"]), s["cities"][opt["city"]]["name"],
 			Style.hex(Style.MUTED), String(Transport.label_of(r["type"])).to_lower(), Style.days(int(r["days"]))]

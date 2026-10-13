@@ -11,7 +11,7 @@ const Transport := preload("res://engine/transport.gd")
 const News := preload("res://engine/news.gd")
 
 ## Bump when the state layout changes; older saves are refused rather than loaded wrongly.
-const STATE_VERSION := 3
+const STATE_VERSION := 4
 
 var state: Dictionary = {}
 var rng := RandomNumberGenerator.new()

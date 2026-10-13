@@ -119,7 +119,7 @@ Offers arrive in an inbox and expire after ~10 game days. A setting controls **a
 (default: **on**). With it off, offers wait in the inbox while time runs.
 
 **2b-E. World generation** ✅
-- ✅ Number of cities is a new-game setting: default 10, range 6–16.
+- ✅ Number of cities is a new-game setting: **default 20, range 12–30** (raised from 10, 6–16 in Batch 2d).
 - ✅ Names are generated from syllables in two or three culture styles (northern, southern, eastern).
 - ✅ Geography drives production and wants (coast → fish, mountains → ore, south → wine/spices, …).
 - ✅ Starts are deliberately unequal between seeds. Home's production options depend on its site; the only
@@ -174,6 +174,41 @@ the current loop. Each route reports its cash result and its profit against cost
   option only exists where something is on board; the editor shows the cargo each stop arrives and leaves with,
   and what comes home.
 
+### Batch 2d — Geography: zones, rivers, speed ✅ (decided after the Milestone 3/4 playtest)
+
+**2d-A. Climate zones** ✅
+The mainland is divided into zones with irregular borders; zones, not straight latitude bands, decide climate
+and raw production. Five zones:
+
+| Zone | Where | Raw goods |
+|---|---|---|
+| Cold north | northern lowlands | Timber, Stone (+ Fish on water) |
+| Highlands | the mountain belt, any latitude | Stone, Iron Ore, Coal, Wool |
+| Temperate | middle lowlands | Grain, Wool, Timber |
+| Warm south | southern lowlands | Wine, Salt, Grain |
+| Tropics | overseas islands | Spices, Gold, Timber, Salt |
+
+- **Fish** can be caught by any town on a coast, fjord or river, in every zone.
+- **River towns can farm Grain** (fertile floodplains) in every mainland zone.
+- These rules apply to the player's cities too and **replace the terrain rules of 3H** for raw goods.
+- NPC towns' processed goods follow their zone (e.g. Steel and Tools in the highlands, Furniture in the north,
+  Cloth in temperate lands, Glass and Wine in the south, Jewelry and Medicine in the tropics and south).
+- Spices and Gold remain overseas-only (2b-E).
+
+**2d-B. Rivers** ✅
+Several rivers run from the mountains to the west coast. They are **navigable for barges and coastal vessels**
+(sheltered-water routes), not for ocean ships. River towns can fish and farm Grain (2d-A).
+
+**2d-C. Travel speed** ✅ (user experience over realism)
+All vehicles are **3× faster** than before (wagon 36, barge 48, coastal vessel 60, ocean ship 90 map units/day).
+A neighbouring town is a few days away. Fees stay per day of travel (2c-C), so they fall accordingly.
+
+**2d-D. Map** ✅
+The map shows zones, rivers, fjords and mountains, and can be **zoomed and panned**.
+
+🟡 To confirm: the home settlement is placed on the northern coast (fjord or open coast) where the zone border
+varies by seed, so most homes start in the Cold north and some in the Temperate zone.
+
 ### Batch 3 — Population, food and growth ✅
 
 **3A. Food** ✅
@@ -216,9 +251,7 @@ and so on), each costing the current stage's price: **1M / 10M / 100M / 1B**. Ea
 - The retooling upgrade (5D) is bought the same way, one per stage from Stage 2.
 
 **3H. What your own cities can produce** ✅
-- **Raw goods** depend on the city's site: Grain needs plains, Fish a coast or fjord, Timber forest, Wool hills or
-  plains, Stone mountains or hills, Salt an open coast or mountains, Iron Ore mountains, Coal mountains or hills,
-  Wine a warm climate (the south, or temperate hills).
+- **Raw goods** depend on the city's climate zone, coast and river (2d-A; this replaced the earlier terrain rules).
 - **Processed goods** (Cloth, Steel, Glass, Furniture, Tools, Machinery, Ships, Jewelry, Medicine) can be made
   anywhere, given their inputs.
 - **Tier N unlocks at Stage N.** Spices and Gold are import-only.

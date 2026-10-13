@@ -259,7 +259,9 @@ static func cannot_produce_reason(city: Dictionary, good: String) -> String:
 	if Data.is_import_only(good):
 		return "Import only — made overseas, you can't produce it"
 	if Geo.is_raw(good) and not Geo.site_allows(city, good):
-		return "Needs %s — not possible here" % Geo.SITE_NEEDS[good]
+		if Geo.zones()["water_goods"].has(good):
+			return "Needs a coast, fjord or river"
+		return "Not found in the %s — comes from: %s" % [Geo.zone_label(city["zone"]), ", ".join(Geo.where_found(good))]
 	var tier := Data.tier(good)
 	if tier > int(city["stage"]):
 		var info := stage_info(tier)

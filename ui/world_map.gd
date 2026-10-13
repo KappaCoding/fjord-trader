@@ -1,7 +1,8 @@
-## Schematic world map: land and sea, cities, the routes your vehicles use, and vehicles on the move.
-## Read-only view of the game state; clicking a city emits `city_clicked`.
+## The world map: climate zones, coast, mountains, rivers, fjords, islands, cities, the routes your vehicles use,
+## and vehicles on the move. Scroll to zoom, drag to pan, double-click to fit. Clicking a city emits `city_clicked`.
+## Read-only view of the game state; all geometry comes from engine/geo.gd.
 ##
-## The open sea between the mainland and the overseas lands is drawn compressed (not to scale);
+## The open sea between the mainland and the overseas islands is drawn compressed (not to scale);
 ## travel days are always shown as numbers.
 extends Control
 
@@ -14,13 +15,15 @@ const Transport := preload("res://engine/transport.gd")
 const Fmt := preload("res://engine/format.gd")
 const Style := preload("res://ui/style.gd")
 
-const OCEAN_SPLIT_X := 300.0
 const OCEAN_COMPRESS := 0.35
 const SEA := Color("1b3048")
-const LAND := {"north": Color("56634f"), "temperate": Color("4a6342"), "south": Color("7a6f47")}
 const COAST := Color("a9c2d0")
-const OFFSHORE := 20.0
-const OPEN_SEA := 70.0
+const RIVER := Color("5fb0dc")
+const ROCK := Color("9a948a")
+const SNOW := Color("e1e5e8")
+const ZONE_TEX_UNITS := 5.0  # map units per texture pixel
+const ZONE_RECT := Rect2(300.0, -500.0, 1500.0, 2300.0)  # mainland area covered by the zone texture (beyond any view)
+const MAX_ZOOM := 6.0
 
 var game: RefCounted
 var selected_id := ""
@@ -31,9 +34,18 @@ var preview_type := ""
 
 var _scale := 1.0
 var _offset := Vector2.ZERO
+var _zoom := 1.0
+var _pan := Vector2.ZERO
 var _paths := {}  # route type -> {city id: [stops from home]}
+var _edges := {}  # "rt|a|b" -> PackedVector2Array in world coordinates
 var _hover := ""
 var _reachable := {}  # city id -> true if a vehicle you own can get there
+var _zone_tex: ImageTexture
+var _press_pos := Vector2.ZERO
+var _dragging := false
+var _pressed := false
+var _legend_open := true
+var _legend_rect := Rect2()
 
 
 func _ready() -> void:
@@ -48,6 +60,7 @@ func set_game(g: RefCounted) -> void:
 	selected_id = g.state["home_id"]
 	preview_stops = []
 	_paths.clear()
+	_edges.clear()
 	var s: Dictionary = g.state
 	var home_id: String = s["home_id"]
 	for rt in Geo.ROUTE_TYPES:
@@ -60,6 +73,13 @@ func set_game(g: RefCounted) -> void:
 			if int(p["days"]) > 0:
 				by_city[id] = p["stops"]
 		_paths[rt] = by_city
+	_zone_tex = _build_zone_texture()
+	reset_view()
+
+
+func reset_view() -> void:
+	_zoom = 1.0
+	_pan = Vector2.ZERO
 	queue_redraw()
 
 
@@ -81,8 +101,8 @@ func refresh() -> void:
 
 func _squash(p: Vector2) -> Vector2:
 	var x := p.x
-	if x < OCEAN_SPLIT_X:
-		x = OCEAN_SPLIT_X + (x - OCEAN_SPLIT_X) * OCEAN_COMPRESS
+	if x < Geo.OCEAN_SPLIT_X:
+		x = Geo.OCEAN_SPLIT_X + (x - Geo.OCEAN_SPLIT_X) * OCEAN_COMPRESS
 	return Vector2(x, p.y)
 
 
@@ -93,76 +113,44 @@ func _fit() -> void:
 		var q := _squash(_world(id))
 		minp = minp.min(q)
 		maxp = maxp.max(q)
-	minp -= Vector2(70, 50)
-	maxp += Vector2(40, 60)
-	maxp.x = maxf(maxp.x, 1040.0) + 70.0  # room for the names of the easternmost cities
+	minp -= Vector2(90, 40)
+	maxp += Vector2(40, 40)
+	maxp.x = maxf(maxp.x, 1300.0) + 60.0  # room for the names of the easternmost cities
 	var world_size := maxp - minp
-	var pad := 8.0
+	var pad := 6.0
 	var avail := size - Vector2(pad, pad) * 2.0
 	_scale = minf(avail.x / world_size.x, avail.y / world_size.y)
 	_offset = Vector2(pad, pad) + (avail - world_size * _scale) / 2.0 - minp * _scale
 
 
 func _world(id: String) -> Vector2:
-	var c: Dictionary = game.state["cities"][id]
-	return Vector2(float(c["x"]), float(c["y"]))
+	return Geo.city_pos(game.state["cities"][id])
 
 
 func to_screen(world: Vector2) -> Vector2:
-	return _squash(world) * _scale + _offset
+	return (_squash(world) * _scale + _offset) * _zoom + _pan
 
 
 func _city_px(id: String) -> Vector2:
 	return to_screen(_world(id))
 
 
-## Where a city meets navigable water: the fjord mouth for fjord towns, the town itself otherwise.
-func _port(id: String) -> Vector2:
-	var c: Dictionary = game.state["cities"][id]
-	if c["site"] == "fjord":
-		var y := float(c["y"])
-		return to_screen(Vector2(Geo.coast_x(y + 12.0) - 6.0, y + 12.0))
-	return _city_px(id)
+func _poly(world_pts: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for p in world_pts:
+		out.append(to_screen(p))
+	return out
 
 
-func _offshore(y: float, dist: float) -> Vector2:
-	return to_screen(Vector2(Geo.coast_x(y) - dist, y))
+func _edge_world(a: String, b: String, rt: String) -> PackedVector2Array:
+	var key := "%s|%s|%s" % [rt, a, b]
+	if not _edges.has(key):
+		_edges[key] = Geo.route_polyline(game.state, a, b, rt)
+	return _edges[key]
 
 
-func _is_overseas(id: String) -> bool:
-	return game.state["cities"][id]["region"] == Geo.REGION_OVERSEAS
-
-
-## Polyline for one hop of a route, drawn from a to b.
 func _edge(a: String, b: String, rt: String) -> PackedVector2Array:
-	var pts := PackedVector2Array()
-	if rt == "land":
-		pts.append(_city_px(a))
-		pts.append(_city_px(b))
-		return pts
-	var ya := float(game.state["cities"][a]["y"])
-	var yb := float(game.state["cities"][b]["y"])
-	var a_over := _is_overseas(a)
-	var b_over := _is_overseas(b)
-	pts.append(_city_px(a))
-	if a_over and b_over:
-		pts.append(_city_px(b))
-		return pts
-	var dist := OFFSHORE if rt == "sheltered" else OPEN_SEA
-	if not a_over:
-		pts.append(_port(a))
-	if not a_over and not b_over:
-		var steps := maxi(1, int(absf(yb - ya) / 25.0))
-		for i in steps + 1:
-			pts.append(_offshore(lerpf(ya, yb, float(i) / float(steps)), dist))
-	elif not a_over:
-		pts.append(_offshore(ya, dist))
-	else:
-		pts.append(_offshore(yb, dist))
-	if not b_over:
-		pts.append(_port(b))
-	pts.append(_city_px(b))
-	return pts
+	return _poly(_edge_world(a, b, rt))
 
 
 func _stops_polyline(stops: Array, rt: String) -> PackedVector2Array:
@@ -190,6 +178,30 @@ static func _point_along(pts: PackedVector2Array, f: float) -> Vector2:
 	return pts[pts.size() - 1]
 
 
+# ------------------------------------------------------------------ zone texture
+
+func _build_zone_texture() -> ImageTexture:
+	var s: Dictionary = game.state
+	var w := int(ZONE_RECT.size.x / ZONE_TEX_UNITS)
+	var h := int(ZONE_RECT.size.y / ZONE_TEX_UNITS)
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var colors := {}
+	for z in Geo.zones()["order"]:
+		colors[z] = Color(String(Geo.zone_info(z)["color"]))
+	for py in h:
+		var wy := ZONE_RECT.position.y + (float(py) + 0.5) * ZONE_TEX_UNITS
+		var coast := Geo.coast_x(s, wy)
+		for px in w:
+			var wx := ZONE_RECT.position.x + (float(px) + 0.5) * ZONE_TEX_UNITS
+			if wx < coast:
+				img.set_pixel(px, py, Color(0, 0, 0, 0))
+				continue
+			var c: Color = colors[Geo.zone_at(s, wx, wy)]
+			var n := 0.035 * sin(wx * 0.09 + wy * 0.05) * sin(wy * 0.07 - wx * 0.03)
+			img.set_pixel(px, py, c.lightened(n) if n > 0.0 else c.darkened(-n))
+	return ImageTexture.create_from_image(img)
+
+
 # ------------------------------------------------------------------ drawing
 
 func _draw() -> void:
@@ -197,10 +209,11 @@ func _draw() -> void:
 	if game == null:
 		return
 	_fit()
-	_draw_mainland()
+	_draw_land()
+	_draw_mountains()
+	_draw_rivers()
 	_draw_islands()
 	_draw_fjords()
-	_draw_terrain()
 	_draw_routes()
 	_draw_highlight()
 	_draw_preview()
@@ -209,84 +222,81 @@ func _draw() -> void:
 	_draw_legend()
 
 
-func _draw_mainland() -> void:
-	var w: Dictionary = Data.balance()["world"]
-	var bands := [
-		[-400.0, float(w["climate_north_below_y"]), LAND["north"]],
-		[float(w["climate_north_below_y"]), float(w["climate_temperate_below_y"]), LAND["temperate"]],
-		[float(w["climate_temperate_below_y"]), 1600.0, LAND["south"]],
-	]
-	for b in bands:
-		var pts := PackedVector2Array()
-		var y: float = b[0]
-		while y <= float(b[1]):
-			pts.append(to_screen(Vector2(Geo.coast_x(y), y)))
-			y += 10.0
-		pts.append(to_screen(Vector2(Geo.coast_x(b[1]), b[1])))
-		pts.append(to_screen(Vector2(2000.0, b[1])))
-		pts.append(to_screen(Vector2(2000.0, b[0])))
-		draw_colored_polygon(pts, b[2])
+func _draw_land() -> void:
+	var tl := to_screen(ZONE_RECT.position)
+	var br := to_screen(ZONE_RECT.end)
+	draw_texture_rect(_zone_tex, Rect2(tl, br - tl), false)
+	var s: Dictionary = game.state
 	var coast := PackedVector2Array()
-	var cy := -400.0
-	while cy <= 1600.0:
-		coast.append(to_screen(Vector2(Geo.coast_x(cy), cy)))
-		cy += 10.0
+	var y := ZONE_RECT.position.y
+	while y <= ZONE_RECT.end.y:
+		coast.append(to_screen(Vector2(Geo.coast_x(s, y), y)))
+		y += 8.0
 	draw_polyline(coast, COAST, 1.5, true)
 
 
+func _draw_mountains() -> void:
+	var s: Dictionary = game.state
+	var k := clampf(_zoom, 1.0, 2.5)
+	var y := -40.0
+	var i := 0
+	while y <= 1360.0:
+		var hw := Geo.ridge_half_width(s, y)
+		for off in [-0.45, 0.05, 0.5]:
+			var jitter := 14.0 * sin(float(i) * 1.7 + float(off) * 5.0)
+			var p := to_screen(Vector2(Geo.ridge_x(s, y) + hw * float(off) + jitter, y + 18.0 * float(off)))
+			var sz := 6.0 * k
+			draw_colored_polygon(PackedVector2Array([p + Vector2(-sz, sz * 0.7), p + Vector2(0, -sz), p + Vector2(sz, sz * 0.7)]), ROCK)
+			draw_colored_polygon(PackedVector2Array([p + Vector2(-sz * 0.33, -sz * 0.45), p + Vector2(0, -sz), p + Vector2(sz * 0.33, -sz * 0.45)]), SNOW)
+		y += 46.0
+		i += 1
+
+
+func _draw_rivers() -> void:
+	var s: Dictionary = game.state
+	var width := clampf(2.2 * _zoom, 2.0, 6.0)
+	for i in s["geo"]["rivers"].size():
+		var pts := _poly(Geo.river_points(s, i))
+		draw_polyline(pts, RIVER, width, true)
+
+
 func _draw_islands() -> void:
+	var col := Color(String(Geo.zone_info("tropics")["color"]))
 	for id in game.state["city_order"]:
-		if not _is_overseas(id):
-			continue
 		var c: Dictionary = game.state["cities"][id]
+		if c["region"] != Geo.REGION_OVERSEAS:
+			continue
 		var center := _city_px(id)
-		var r := 80.0 * _scale
+		var r := 80.0 * _scale * _zoom
 		var phase := float(abs(String(c["name"]).hash()) % 1000) / 100.0
 		var pts := PackedVector2Array()
-		for i in 24:
-			var a := TAU * float(i) / 24.0
+		for i in 28:
+			var a := TAU * float(i) / 28.0
 			var k := 1.0 + 0.18 * sin(a * 3.0 + phase) + 0.1 * sin(a * 5.0 + phase * 2.0)
 			pts.append(center + Vector2(cos(a), sin(a)) * r * k)
-		draw_colored_polygon(pts, LAND[c["climate"]])
+		draw_colored_polygon(pts, col)
 		pts.append(pts[0])
 		draw_polyline(pts, COAST, 1.2, true)
 
 
 func _draw_fjords() -> void:
-	var width := clampf(11.0 * _scale, 3.0, 8.0)
-	for id in game.state["city_order"]:
-		if game.state["cities"][id]["site"] != "fjord":
-			continue
-		var a := _city_px(id)
-		var b := _port(id)
-		var mid := a.lerp(b, 0.5) + (b - a).orthogonal().normalized() * 6.0
-		var pts := PackedVector2Array([a, mid, b, b + (b - mid).normalized() * 6.0])
-		draw_polyline(pts, SEA, width, true)
-		draw_circle(a, width * 0.5, SEA)
-
-
-func _draw_terrain() -> void:
-	var rock := Color("8e8e86")
-	var snow := Color("d8dde0")
-	var tree := Color("2c4727")
+	var width := clampf(8.0 * _scale * _zoom, 3.0, 10.0)
 	for id in game.state["city_order"]:
 		var c: Dictionary = game.state["cities"][id]
-		var p := _city_px(id)
-		var feats: Array = c["features"]
-		if feats.has("mountains"):
-			for o in [Vector2(-17, -9), Vector2(-9, -14), Vector2(-1, -9)]:
-				var base: Vector2 = p + o
-				draw_colored_polygon(PackedVector2Array([base + Vector2(-5, 4), base + Vector2(0, -5), base + Vector2(5, 4)]), rock)
-				draw_colored_polygon(PackedVector2Array([base + Vector2(-1.6, -2), base + Vector2(0, -5), base + Vector2(1.6, -2)]), snow)
-		if feats.has("forest"):
-			for o in [Vector2(-14, 8), Vector2(-9, 12), Vector2(-17, 13)]:
-				draw_circle(p + o, 2.6, tree)
+		if c["site"] != Geo.SITE_FJORD:
+			continue
+		var a := _city_px(id)
+		var b := to_screen(Geo.city_port(c))
+		var mid := a.lerp(b, 0.5) + (b - a).orthogonal().normalized() * 5.0
+		var ext := b + (b - mid).normalized() * 6.0
+		draw_polyline(PackedVector2Array([a, mid, b, ext]), SEA, width, true)
+		draw_circle(a, width * 0.5, SEA)
 
 
 func _route_style(rt: String, strong: bool) -> Dictionary:
 	var col: Color = Style.ROUTE_COLORS[rt]
 	if not strong:
-		col.a = 0.55
+		col.a = 0.6
 	var w := 1.6 if rt != "sheltered" else 2.0
 	if strong:
 		w += 2.0
@@ -294,6 +304,8 @@ func _route_style(rt: String, strong: bool) -> Dictionary:
 
 
 func _stroke(pts: PackedVector2Array, style: Dictionary) -> void:
+	if pts.size() < 2:
+		return
 	if float(style["dash"]) <= 0.0:
 		draw_polyline(pts, style["color"], style["width"], true)
 		return
@@ -363,12 +375,13 @@ func _draw_vehicles() -> void:
 
 func _city_radius(id: String) -> float:
 	var pop := float(game.state["cities"][id]["pop"])
-	return clampf(3.5 + 2.5 * log(pop / 1000.0) / log(10.0), 4.0, 10.0)
+	return clampf(3.5 + 2.5 * log(pop / 1000.0) / log(10.0), 4.0, 10.0) * clampf(0.85 + 0.15 * _zoom, 1.0, 1.6)
 
 
 func _draw_cities() -> void:
 	var font := get_theme_default_font()
 	var home_id: String = game.state["home_id"]
+	var font_size := 13 if _zoom < 1.5 else 15
 	for id in game.state["city_order"]:
 		var c: Dictionary = game.state["cities"][id]
 		var p := _city_px(id)
@@ -391,12 +404,12 @@ func _draw_cities() -> void:
 			draw_arc(p, r, 0.0, TAU, 32, fill.darkened(0.15), 1.6, true)
 		if id == home_id:
 			draw_arc(p, r + 2.0, 0.0, TAU, 32, Color(0, 0, 0, 0.8), 1.5, true)
-		var name_col := Color.WHITE if reachable else Color(0.75, 0.75, 0.75)
+		var name_col := Color.WHITE if reachable else Color(0.78, 0.78, 0.78)
 		var text_pos := p + Vector2(r + 4.0, 5.0)
-		_text(font, text_pos, c["name"], 14, name_col)
+		_text(font, text_pos, c["name"], font_size, name_col)
 		if price_good != "":
 			var price := int(Market.sell_lot_prices(game.state, id, price_good, 1)[0])
-			_text(font, text_pos + Vector2(0, 15), Fmt.coins(price), 12, Style.band_color(c["market"][price_good]["band"]))
+			_text(font, text_pos + Vector2(0, font_size + 1), Fmt.coins(price), font_size - 2, Style.band_color(c["market"][price_good]["band"]))
 
 
 func _text(font: Font, pos: Vector2, text: String, font_size: int, col: Color) -> void:
@@ -406,24 +419,37 @@ func _text(font: Font, pos: Vector2, text: String, font_size: int, col: Color) -
 
 func _draw_legend() -> void:
 	var font := get_theme_default_font()
-	var rows := [
-		["land", "Road — wagons"],
-		["sheltered", "Sheltered water — barges"],
-		["ocean", "Open sea — ocean ships (from Stage 3)"],
-	]
-	var box := Rect2(Vector2(8, 8), Vector2(262, 100))
+	if not _legend_open:
+		_legend_rect = Rect2(Vector2(8, 8), Vector2(74, 22))
+		draw_rect(_legend_rect, Color(0, 0, 0, 0.62))
+		draw_string(font, Vector2(16, 24), "Legend ▸", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+		return
+	var box := Rect2(Vector2(8, 8), Vector2(430, 124))
+	_legend_rect = box
 	draw_rect(box, Color(0, 0, 0, 0.62))
+	var x0 := box.position.x + 10.0
 	var y := box.position.y + 18.0
+	var rows := [["land", "Road — wagons"], ["sheltered", "Coast, fjord, river — barges"], ["ocean", "Open sea — ocean ships"]]
 	for row in rows:
 		var st := _route_style(row[0], true)
 		st["width"] = 2.5
-		_stroke(PackedVector2Array([Vector2(box.position.x + 10, y - 4), Vector2(box.position.x + 40, y - 4)]), st)
-		draw_string(font, Vector2(box.position.x + 48, y), row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+		_stroke(PackedVector2Array([Vector2(x0, y - 4), Vector2(x0 + 28, y - 4)]), st)
+		draw_string(font, Vector2(x0 + 36, y), row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 		y += 19.0
-	draw_arc(Vector2(box.position.x + 25, y - 4), 5.0, 0.0, TAU, 20, Style.NEUTRAL, 1.6, true)
-	draw_string(font, Vector2(box.position.x + 48, y), "Hollow: none of your vehicles can reach it", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	draw_arc(Vector2(x0 + 14, y - 4), 5.0, 0.0, TAU, 20, Style.NEUTRAL, 1.6, true)
+	draw_string(font, Vector2(x0 + 36, y), "Hollow: you can't reach it yet", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 	y += 19.0
-	draw_string(font, Vector2(box.position.x + 10, y), "The open sea is not drawn to scale.", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Style.MUTED)
+	draw_string(font, Vector2(x0, y), "Scroll: zoom · drag: pan · double-click: fit", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Style.MUTED)
+	y += 16.0
+	draw_string(font, Vector2(x0, y), "Open sea not to scale · click here to hide", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Style.MUTED)
+	var zx := box.position.x + 250.0
+	var zy := box.position.y + 18.0
+	for z in Geo.zones()["order"]:
+		draw_rect(Rect2(Vector2(zx, zy - 10), Vector2(14, 11)), Color(String(Geo.zone_info(z)["color"])))
+		draw_string(font, Vector2(zx + 20, zy), Geo.zone_label(z), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+		zy += 19.0
+	draw_line(Vector2(zx, zy - 5), Vector2(zx + 14, zy - 5), RIVER, 2.5)
+	draw_string(font, Vector2(zx + 20, zy), "River", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 
 
 # ------------------------------------------------------------------ input
@@ -439,19 +465,61 @@ func _city_at(pos: Vector2) -> String:
 	return best
 
 
+func _zoom_at(cursor: Vector2, factor: float) -> void:
+	var nz := clampf(_zoom * factor, 1.0, MAX_ZOOM)
+	if is_equal_approx(nz, _zoom):
+		return
+	_pan = cursor - (cursor - _pan) * (nz / _zoom)
+	_zoom = nz
+	if is_equal_approx(_zoom, 1.0):
+		_pan = Vector2.ZERO
+	queue_redraw()
+
+
 func _gui_input(event: InputEvent) -> void:
 	if game == null:
 		return
-	if event is InputEventMouseMotion:
-		var h := _city_at(event.position)
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom_at(mb.position, 1.15)
+			accept_event()
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom_at(mb.position, 1.0 / 1.15)
+			accept_event()
+		elif mb.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and _legend_rect.has_point(mb.position):
+				_legend_open = not _legend_open
+				queue_redraw()
+				accept_event()
+				return
+			if mb.pressed and mb.double_click and mb.button_index == MOUSE_BUTTON_LEFT:
+				reset_view()
+				accept_event()
+				return
+			if mb.pressed:
+				_pressed = true
+				_dragging = false
+				_press_pos = mb.position
+			else:
+				if not _dragging and mb.button_index == MOUSE_BUTTON_LEFT:
+					var id := _city_at(mb.position)
+					if id != "":
+						city_clicked.emit(id)
+				_pressed = false
+				_dragging = false
+			accept_event()
+	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
+		if _pressed and (_dragging or mm.position.distance_to(_press_pos) > 4.0):
+			_dragging = true
+			_pan += mm.relative
+			queue_redraw()
+			return
+		var h := _city_at(mm.position)
 		if h != _hover:
 			_hover = h
 			queue_redraw()
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var id := _city_at(event.position)
-		if id != "":
-			city_clicked.emit(id)
-			accept_event()
 
 
 func _get_tooltip(at_position: Vector2) -> String:
@@ -462,7 +530,10 @@ func _get_tooltip(at_position: Vector2) -> String:
 		return ""
 	var s: Dictionary = game.state
 	var c: Dictionary = s["cities"][id]
-	var lines: PackedStringArray = ["%s · population %s" % [c["name"], Fmt.coins(int(c["pop"]))]]
+	var site: String = {"fjord": "fjord town", "coast": "coastal town", "river": "river town", "inland": "inland town"}[c["site"]]
+	if c["region"] == Geo.REGION_OVERSEAS:
+		site = "overseas port"
+	var lines: PackedStringArray = ["%s · population %s" % [c["name"], Fmt.coins(int(c["pop"]))], "%s · %s" % [Geo.zone_label(c["zone"]), site]]
 	if id == s["home_id"]:
 		lines.append("Your settlement")
 	else:

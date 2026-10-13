@@ -66,6 +66,16 @@ Notes:
 - NPC city growth (3E) moved to Milestone 5, since it depends on NPC trade.
 - Saves from Milestone 2 can't be loaded (state layout changed).
 
+## World update — zones, rivers, speed ✅ (after the Milestone 3/4 playtest)
+
+- Five climate zones with irregular borders decide raw production for every town, the player's included.
+- Rivers from the mountains to the coast; barges and coastal vessels sail up them; river towns fish and farm Grain.
+- Mountain belt (highlands) with Iron Ore and Coal; fjord towns at the heads of inlets.
+- Worlds of 20 cities by default (12–30); all vehicles 3× faster.
+- Map: zone colours, rivers, mountains, zoom and pan, collapsible legend.
+- Cached pathfinding so bigger worlds stay responsive.
+- 262 headless engine tests. Saves from earlier versions can't be loaded.
+
 ## Milestone 5 — A living world (next)
 
 NPC trade routes with visible vehicles, NPC deliveries into your home market (so you can buy at home),

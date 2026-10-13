@@ -540,6 +540,11 @@ func _build_map_toolbar() -> HBoxContainer:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(spacer)
+	var fit := Button.new()
+	fit.text = "Fit map"
+	fit.tooltip_text = "Zoom out to the whole world (or double-click the map)"
+	fit.pressed.connect(func(): world_map.reset_view())
+	bar.add_child(fit)
 	bar.add_child(Style.label("Prices:", Style.MUTED))
 	price_opt = OptionButton.new()
 	price_opt.add_item("off")
