@@ -323,6 +323,15 @@ func _build_stop(i: int) -> void:
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(info)
 	_stop_info.append(info)
+	var market_btn := Button.new()
+	market_btn.toggle_mode = true
+	market_btn.set_pressed_no_signal(bool(st.get("ui_market_open", false)))
+	market_btn.text = "Market ▾" if bool(st.get("ui_market_open", false)) else "Market ▸"
+	market_btn.tooltip_text = "Show what this city wants and its prices for every good"
+	market_btn.toggled.connect(func(on: bool):
+		st["ui_market_open"] = on  # editor-only flag; the engine ignores it
+		_rebuild.call_deferred())
+	head.add_child(market_btn)
 	var up := Button.new()
 	up.text = "▲"
 	up.tooltip_text = "Visit earlier"
@@ -352,6 +361,8 @@ func _build_stop(i: int) -> void:
 	var cargo_l := Style.rich()
 	vb.add_child(cargo_l)
 	_stop_cargo.append(cargo_l)
+	if bool(st.get("ui_market_open", false)):
+		vb.add_child(_market_panel(city_id, _stop_estimate(i).get("onboard", {})))
 
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", 30)
@@ -604,3 +615,78 @@ func _cargo_text(cargo: Dictionary, cap: int) -> String:
 		return "[color=#%s]nothing[/color]" % Style.hex(Style.MUTED)
 	var col := Style.WARN if total >= cap else Style.MUTED
 	return "%s [color=#%s](%d/%d lots)[/color]" % [", ".join(parts), Style.hex(col), total, cap]
+
+
+## The expandable market view of a stop: wants, what the city produces, and today's prices for every good.
+## Wanted goods come first, then goods on board, then what the city sells, then the rest.
+func _market_panel(city_id: String, onboard: Dictionary) -> Control:
+	var s: Dictionary = game.state
+	var c: Dictionary = s["cities"][city_id]
+	var muted := Style.hex(Style.MUTED)
+	var box := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0.25)
+	sb.set_corner_radius_all(4)
+	sb.set_content_margin_all(8)
+	box.add_theme_stylebox_override("panel", sb)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	box.add_child(vb)
+
+	var head := Style.rich()
+	head.custom_minimum_size.x = WIDTH - 90
+	var days_left := ceili(float(c["want_timer_hours"]) / 24.0)
+	head.text = "[b]%s[/b] [color=#%s]· population %s[/color]\nWants [color=#%s][b]%s[/b][/color] [color=#%s](pays a premium; changes in %s)[/color] · Produces [color=#%s]%s[/color]" % [
+		c["name"], muted, Fmt.coins(int(c["pop"])),
+		Style.hex(Style.WANT), ", ".join(PackedStringArray(c["wants"])), muted, Style.days(days_left),
+		Style.hex(Style.SURPLUS), ", ".join(PackedStringArray(c["produces"]))]
+	vb.add_child(head)
+
+	var order: Array = []
+	for g in c["wants"]:
+		order.append(g)
+	for g in Data.good_ids():
+		if int(onboard.get(g, 0)) > 0 and not order.has(g):
+			order.append(g)
+	for g in Data.good_ids():
+		if c["produces"].has(g) and not order.has(g):
+			order.append(g)
+	for g in Data.good_ids():
+		if not order.has(g):
+			order.append(g)
+
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 28)
+	vb.add_child(cols)
+	var half := int(ceil(order.size() / 2.0))
+	for part in [order.slice(0, half), order.slice(half)]:
+		var grid := GridContainer.new()
+		grid.columns = 4
+		grid.add_theme_constant_override("h_separation", 10)
+		grid.add_theme_constant_override("v_separation", 1)
+		for h in ["Good", "Pays you", "vs base", "Sells to you"]:
+			var hl := Style.label(h, Style.MUTED, 12)
+			if h != "Good":
+				Style.right(hl)
+			grid.add_child(hl)
+		for g in part:
+			var band: String = c["market"][g]["band"]
+			var col := Style.band_color(band)
+			var name_text: String = g
+			if int(onboard.get(g, 0)) > 0:
+				name_text += "  (%d on board)" % int(onboard[g])
+			var nl := Style.label(name_text, col, 13)
+			nl.custom_minimum_size.x = 150
+			nl.tooltip_text = Style.band_label(band)
+			grid.add_child(nl)
+			var pays := int(Market.sell_lot_prices(s, city_id, g, 1)[0])
+			grid.add_child(Style.right(Style.label(Fmt.coins(pays), col, 13)))
+			var listed := Market.listed_price(s, city_id, g)
+			var pct := (float(listed) / float(Data.base_price(g)) - 1.0) * 100.0
+			grid.add_child(Style.right(Style.label("%+.0f%%" % pct, Style.WANT if pct >= 0.0 else Style.SURPLUS, 12)))
+			var sells := Market.city_sells(s, city_id, g)
+			grid.add_child(Style.right(Style.label(Fmt.coins(listed) if sells else "—", Color.WHITE if sells else Style.MUTED, 13)))
+		cols.add_child(grid)
+	var note := Style.label("Today's prices. They drift a little before you arrive, and each lot you trade moves them.", Style.MUTED, 12)
+	vb.add_child(note)
+	return box

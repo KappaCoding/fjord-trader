@@ -28,8 +28,9 @@ setting up trade routes and competing with NPC traders across a procedurally gen
 4. **Find a market.** Pick a good under *Prices* (or click a good's name) to colour every city by what it pays.
 5. **Trade with routes.** Press **Buy**/**Sell** in a city's market or **Plan route** on a vehicle. A route loads goods
    at home, visits one or more stops (sell some goods, buy others at each), and comes home. Tick **Repeat** to make it
-   a standing trade route; *Stop after this loop* ends it. Price limits are optional (0 = none). **Keep** in the
-   warehouse reserves lots that routes will never take.
+   a standing trade route; *Stop after this loop* ends it. **Market ▸** on a stop shows what that city wants and its
+   prices for every good. Price limits are optional (0 = none). **Keep** in the warehouse reserves lots that routes
+   will never take.
 6. **Watch your money.** The **Finances** tab shows running costs, fees already committed, how long your money
    lasts, and this and last month's books.
 
