@@ -174,6 +174,21 @@ the current loop. Each route reports its cash result and its profit against cost
   option only exists where something is on board; the editor shows the cargo each stop arrives and leaves with,
   and what comes home.
 
+**2c-G. Route planning aids** ✅ (asked for after the world update)
+- **Net per stop.** Every stop shows whether it makes or loses money: what its sales fetch, less what those goods
+  cost (purchase price for goods bought on the way, the 4B value for goods made at home), less the fee for the leg
+  into the stop. Each good sold shows its own profit. Buying is not a loss: bought goods carry their price to the
+  stop where they're sold. The way home's fee is shown on the return line. The stops' nets less that fee add up
+  to the route's profit per trip.
+- **Where to sell.** Clicking a good a stop sells (or a good loaded at home) lists the cities the vehicle can take
+  it to: what each pays, the margin per lot, the extra days, how the route's profit changes and the route's
+  profit per day with the sale added. **Best first = highest route profit per day**, so far detours don't win on
+  total alone. One click adds the sale: the stop buys (or home loads) as much as fits — or the amount already set —
+  and a new next stop sells all of it; if the next stop already is that city, it sells there instead. The stop
+  after a new one loses its order to sell that good, since none can be left on board.
+- Estimates use today's prices with price impact; they ignore vehicle upkeep (it is charged per month, not per
+  trip).
+
 ### Batch 2d — Geography: zones, rivers, speed ✅ (decided after the Milestone 3/4 playtest)
 
 **2d-A. Climate zones** ✅

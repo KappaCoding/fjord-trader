@@ -76,6 +76,13 @@ Notes:
 - Cached pathfinding so bigger worlds stay responsive.
 - 262 headless engine tests. Saves from earlier versions can't be loaded.
 
+## Route planning aids ✅ (after the world update)
+
+- Net profit or loss per stop and per good in the route editor, adding up to the route's profit.
+- "Where to sell": click a good at a stop (or at home) to see every reachable city's price, detour and the route's
+  profit per day with the sale added; one click adds it as the next stop.
+- 297 headless engine tests.
+
 ## Milestone 5 — A living world (next)
 
 NPC trade routes with visible vehicles, NPC deliveries into your home market (so you can buy at home),

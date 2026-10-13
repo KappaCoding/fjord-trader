@@ -71,6 +71,21 @@ func plan_route(vehicle_id: String, route: Dictionary) -> Dictionary:
 	return Transport.plan_route(state, vehicle_id, route)
 
 
+## Where a good bought at stop `after` (or loaded at home, -1) could be sold next; see Transport.sale_options.
+func sale_options(vehicle_id: String, route: Dictionary, after: int, good: String) -> Dictionary:
+	return Transport.sale_options(state, vehicle_id, route, after, good)
+
+
+## Just the amount and cost such a sale would take on (cheap); see Transport.sale_load.
+func sale_load(vehicle_id: String, route: Dictionary, after: int, good: String) -> Dictionary:
+	return Transport.sale_load(state, vehicle_id, route, after, good)
+
+
+## The route with "take on `lots` of `good` at `after`, sell it at `city` next" added (a pure edit; nothing is sent).
+func add_sale(route: Dictionary, after: int, good: String, city: String, lots: int) -> Dictionary:
+	return Transport.add_sale(route, after, good, city, lots)
+
+
 func send_route(vehicle_id: String, route: Dictionary) -> Dictionary:
 	return Transport.send_route(state, vehicle_id, route)
 

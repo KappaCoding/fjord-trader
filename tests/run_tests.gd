@@ -59,6 +59,8 @@ func _init() -> void:
 	test_committed_fees()
 	test_sell_all()
 	test_cargo_estimates()
+	test_stop_net()
+	test_sale_options()
 	# Geography (Batch 2d)
 	test_geography()
 	test_travel_speed()
@@ -916,6 +918,127 @@ func test_cargo_estimates() -> void:
 	check(p["stops"][0]["onboard"] == {"Salt": 5}, "arrives with what left home")
 	check(p["stops"][0]["onboard_after"] == {"Salt": 3, y: 3} or p["stops"][0]["onboard_after"] == {y: 3, "Salt": 3}, "leaves with the rest plus purchases")
 	check(p["home_cargo"].get("Salt", 0) == 3 and p["home_cargo"].get(y, 0) == 3, "comes home with what is left")
+
+
+# ------------------------------------------------------------------ Route planning aids (2c-G)
+
+func test_stop_net() -> void:
+	var g := new_game("stopnet", 10)
+	no_mouths(g)
+	var s := g.state
+	var ab := two_wagon_stops(g)
+	var a: String = ab[0]
+	var b: String = ab[1]
+	var y: String = s["cities"][a]["produces"][0]
+	Economy.add_stock(home_wh(g), "Salt", 4, 4 * 67500)
+	var route := {
+		"load": {"Salt": 4},
+		"stops": [
+			{"city": a, "sell": {"Salt": {"lots": -1}}, "buy": {y: {"lots": 6}}},
+			{"city": b, "sell": {y: {"lots": -1}}, "buy": {}},
+		],
+		"repeat": false,
+	}
+	var p := g.plan_route("wagon-1", route)
+	check(p["errors"].is_empty(), "the route plans %s" % str(p["errors"]))
+	var nets := 0
+	for est in p["stops"]:
+		nets += int(est["profit"])
+	check(nets - int(p["return_fee"]) == int(p["profit"]), "stop nets less the way-home fee add up to the route's profit (%d vs %d)" % [nets - int(p["return_fee"]), p["profit"]])
+	var sa: Dictionary = p["stops"][0]
+	var sb: Dictionary = p["stops"][1]
+	check(int(sa["fee"]) == int(p["legs"][0]["fee"]) and int(sb["fee"]) == int(p["legs"][1]["fee"]), "each stop carries the fee of the leg into it")
+	check(int(p["return_fee"]) == int(p["legs"][2]["fee"]), "the way-home fee is the last leg's")
+	check(int(sa["profit"]) == int(sa["sales"]) - int(sa["sold_cost"]) - int(sa["fee"]), "a stop's net is sales less goods' cost less its fee")
+	check(int(sb["sold_cost"]) == int(sa["purchases"]), "goods bought at A count at their purchase price where they are sold (B)")
+	check(int(sa["sells"][0]["cost"]) + int(sa["sells"][0]["profit"]) == int(sa["sells"][0]["revenue"]), "each sale reports revenue, cost and profit")
+
+	var buy_only := {"load": {}, "stops": [{"city": a, "sell": {}, "buy": {y: {"lots": 3}}}], "repeat": false}
+	var pb := g.plan_route("wagon-1", buy_only)
+	check(int(pb["stops"][0]["profit"]) == -int(pb["stops"][0]["fee"]), "a stop that only buys costs just its fee; the goods count where they're sold")
+
+	var wh := home_wh(g)
+	Economy.add_stock(wh, "Wool", 2, 2 * 5000000)
+	var loss := g.plan_route("wagon-1", one_stop(a, {"Wool": 2}, {}))
+	check(int(loss["stops"][0]["profit"]) < 0, "selling below what the goods cost shows a loss at that stop")
+
+
+func test_sale_options() -> void:
+	var g := new_game("saleopts", 10)
+	no_mouths(g)
+	var s := g.state
+	var a: String = two_wagon_stops(g)[0]
+	var good: String = s["cities"][a]["produces"][0]
+	var route := {"load": {}, "stops": [{"city": a, "sell": {}, "buy": {}, "ui_market_open": true}], "repeat": false, "ui_sell_good": good}
+	var opts := g.sale_options("wagon-1", route, 0, good)
+	check(opts["error"] == "", "options for a good the stop sells: %s" % opts["error"])
+	check(int(opts["lots"]) == 10, "with nothing else aboard, estimates fill the wagon (%d)" % int(opts["lots"]))
+	check(int(opts["cost"]) == Economy.sum(Market.buy_lot_prices(s, a, good, 10)), "the cost is today's purchase price with price impact")
+	var list: Array = opts["options"]
+	check(not list.is_empty(), "some reachable city buys it")
+	var sorted_ok := true
+	var sums_ok := true
+	for i in list.size():
+		var o: Dictionary = list[i]
+		if o["city"] == a or o["city"] == s["home_id"]:
+			sorted_ok = false
+		if i > 0 and int(o["per_day"]) > int(list[i - 1]["per_day"]):
+			sorted_ok = false
+		if int(o["gain"]) != int(o["revenue"]) - int(opts["cost"]) - int(o["extra_fee"]):
+			sums_ok = false
+		if int(o["per_day"]) != int(o["route_profit"]) / int(o["route_days"]):
+			sums_ok = false
+	check(sorted_ok, "best route profit per day first, never this stop or home")
+	check(sums_ok, "gain = revenue − cost − extra fees here; per day = route profit / route days")
+	check(int(opts["now_profit"]) == int(g.plan_route("wagon-1", route)["profit"]), "reports the route's profit before the change")
+	check(int(g.sale_load("wagon-1", route, 0, good)["lots"]) == int(opts["lots"]), "sale_load gives the same amount cheaply")
+
+	var best: Dictionary = list[0]
+	var p1 := g.plan_route("wagon-1", route)
+	var added := g.add_sale(route, 0, good, best["city"], int(opts["lots"]))
+	check(added["stops"].size() == 2 and added["stops"][1]["city"] == best["city"], "the sale becomes the next stop")
+	check(int(added["stops"][0]["buy"][good]["lots"]) == 10 and int(added["stops"][1]["sell"][good]["lots"]) == -1, "buy here, sell all of it there")
+	check(bool(added["stops"][0].get("ui_market_open", false)) and added.get("ui_sell_good", "") == good, "editor flags survive")
+	check(route["stops"].size() == 1, "the original route is untouched")
+	var p2 := g.plan_route("wagon-1", added)
+	check(p2["errors"].is_empty(), "the built route plans %s" % str(p2["errors"]))
+	check(int(p2["days"]) == int(p1["days"]) + int(best["extra_days"]), "the detour adds the days it said (%d vs %d + %d)" % [p2["days"], p1["days"], best["extra_days"]])
+	check(int(p2["fees"]) == int(p1["fees"]) + int(best["extra_fee"]), "and the fees it said")
+	check(int(p2["stops"][1]["sales"]) == int(best["revenue"]), "the plan sells for what the option estimated")
+	check(int(p2["stops"][1]["profit"]) == int(best["revenue"]) - int(opts["cost"]) - int(p2["stops"][1]["fee"]), "the new stop's net matches")
+	check(int(p2["profit"]) == int(best["route_profit"]) and int(p2["profit"]) - int(p1["profit"]) == int(best["gain"]), "the route's profit is what the option said")
+
+	var again := g.sale_options("wagon-1", added, 0, good)
+	var merged := {}
+	for o in again["options"]:
+		if o["city"] == best["city"]:
+			merged = o
+	check(bool(merged.get("merge", false)) and int(merged.get("extra_days", -1)) == 0, "the city already next is merged into, with no detour")
+	var twice := g.add_sale(added, 0, good, best["city"], 4)
+	check(twice["stops"].size() == 2 and int(twice["stops"][0]["buy"][good]["lots"]) == 4, "adding it again changes the amount, not the stops")
+	var other := ""
+	for o in list:
+		if o["city"] != best["city"]:
+			other = o["city"]
+			break
+	var moved := g.add_sale(added, 0, good, other, 10)
+	check(moved["stops"].size() == 3 and moved["stops"][1]["city"] == other, "a different city becomes a new stop in between")
+	check(not moved["stops"][2]["sell"].has(good), "the old next stop's order for that good is dropped (none left to sell)")
+	check(g.plan_route("wagon-1", moved)["warnings"].is_empty(), "so the route has no 'nothing to sell' warning")
+
+	Economy.add_stock(home_wh(g), "Salt", 6, 6 * 50000)
+	var from_home := g.sale_options("wagon-1", route, -1, "Salt")
+	check(int(from_home["lots"]) == 6 and int(from_home["cost"]) == 6 * 50000, "from home: what's in the warehouse, at its cost basis")
+	var hb: String = from_home["options"][0]["city"]
+	var home_route := g.add_sale(route, -1, "Salt", hb, 6)
+	check(int(home_route["load"]["Salt"]) == 6 and home_route["stops"][0]["city"] == hb, "loads it at home and sells it at the first stop")
+
+	var not_sold := ""
+	for gid in Data.good_ids():
+		if not s["cities"][a]["produces"].has(gid):
+			not_sold = gid
+			break
+	check(g.sale_options("wagon-1", route, 0, not_sold)["error"] != "", "no options for a good the stop doesn't sell")
 
 
 # ------------------------------------------------------------------ Geography (Batch 2d)

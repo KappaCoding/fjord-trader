@@ -238,15 +238,18 @@ static func route_names(state: Dictionary, route: Dictionary) -> String:
 
 
 ## Checks and estimates a route without changing anything (prices as of now).
-## {errors, warnings, legs: [{from, to, days, fee, stops}], stops: [{city, onboard, onboard_after, sells, buys}],
-##  days, fees, sales, sales_profit, purchases, cash, profit, load_lots, load_cargo, home_cargo,
-##  first_arrival_t, home_t, full_path, capacity}
+## {errors, warnings, legs: [{from, to, days, fee, stops}], stops: [stop estimate], days, fees, return_fee, sales,
+##  sales_profit, purchases, cash, profit, load_lots, load_cargo, home_cargo, first_arrival_t, home_t, full_path, capacity}
+## A stop estimate: {city, onboard, onboard_after, sells: [{good, lots, revenue, cost, profit}], buys: [{good, lots, cost}],
+##  sales, sold_cost, purchases, fee, profit}. Its profit is the stop's net (DESIGN 2c-G): what the goods sold there
+##  fetched, less what they cost, less the fee for the leg into the stop. The stops' nets less return_fee (the way
+##  home) add up to the route's profit.
 ## onboard / onboard_after / load_cargo / home_cargo are {good: lots}: cargo on arrival, on leaving, leaving home,
 ## and coming home.
 static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictionary) -> Dictionary:
 	var route := normalize_route(route_in)
 	var r := {
-		"errors": [], "warnings": [], "legs": [], "stops": [], "days": 0, "fees": 0, "sales": 0,
+		"errors": [], "warnings": [], "legs": [], "stops": [], "days": 0, "fees": 0, "return_fee": 0, "sales": 0,
 		"sales_profit": 0, "purchases": 0, "cash": 0, "profit": 0, "load_lots": 0,
 		"first_arrival_t": -1, "home_t": -1, "full_path": [], "capacity": 0, "load_cargo": {}, "home_cargo": {},
 	}
@@ -278,14 +281,17 @@ static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictiona
 		seq.append(st["city"])
 	seq.append(home_id)
 	var full: Array = [home_id]
+	var leg_fees: Array = []  # one per leg of seq, 0 where there is no route
 	for i in range(1, seq.size()):
 		var p := path_for(state, seq[i - 1], seq[i], v["type"])
 		var days := int(p["days"])
 		if days <= 0:
+			leg_fees.append(0)
 			r["errors"].append("%s can't travel from %s to %s: there is no %s route." % [
 				v["name"], state["cities"][seq[i - 1]]["name"], state["cities"][seq[i]]["name"], ROUTE_WORDS[route_of(v["type"])]])
 			continue
 		var fee := trip_fee(state, v["type"], days)
+		leg_fees.append(fee)
 		r["legs"].append({"from": seq[i - 1], "to": seq[i], "days": days, "fee": fee, "stops": p["stops"]})
 		r["days"] = int(r["days"]) + days
 		r["fees"] = int(r["fees"]) + fee
@@ -293,6 +299,7 @@ static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictiona
 		for k in range(1, ps.size()):
 			full.append(ps[k])
 	r["full_path"] = full
+	r["return_fee"] = int(leg_fees[leg_fees.size() - 1])
 	var t := int(state["time_hours"])
 	if not r["legs"].is_empty():
 		r["first_arrival_t"] = t + int(r["legs"][0]["days"]) * 24
@@ -326,7 +333,10 @@ static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictiona
 		var st: Dictionary = stops[i]
 		var c: String = st["city"]
 		var cname: String = state["cities"][c]["name"]
-		var est := {"city": c, "onboard": _lots_only(onboard), "onboard_after": {}, "sells": [], "buys": []}
+		var est := {
+			"city": c, "onboard": _lots_only(onboard), "onboard_after": {}, "sells": [], "buys": [],
+			"sales": 0, "sold_cost": 0, "purchases": 0, "fee": int(leg_fees[i]), "profit": 0,
+		}
 		if bool(st["sell_all"]):
 			anything = true
 			if Economy.total_lots(onboard) == 0:
@@ -353,7 +363,9 @@ static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictiona
 				r["warnings"].append("Stop %d (%s): at today's prices only %d of %d %s sell above your minimum." % [i + 1, cname, k, n, g])
 			var cost := Economy.remove_stock(onboard, g, k)
 			sold_cost_total += cost
-			est["sells"].append({"good": g, "lots": k, "revenue": revenue, "profit": revenue - cost})
+			est["sells"].append({"good": g, "lots": k, "revenue": revenue, "cost": cost, "profit": revenue - cost})
+			est["sales"] = int(est["sales"]) + revenue
+			est["sold_cost"] = int(est["sold_cost"]) + cost
 			r["sales"] = int(r["sales"]) + revenue
 		for g in Data.good_ids():
 			if not st["buy"].has(g):
@@ -380,8 +392,10 @@ static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictiona
 				r["warnings"].append("Stop %d (%s): at today's prices only %d of %d %s cost less than your maximum." % [i + 1, cname, k, n, g])
 			Economy.add_stock(onboard, g, k, cost)
 			est["buys"].append({"good": g, "lots": k, "cost": cost})
+			est["purchases"] = int(est["purchases"]) + cost
 			r["purchases"] = int(r["purchases"]) + cost
 		est["onboard_after"] = _lots_only(onboard)
+		est["profit"] = int(est["sales"]) - int(est["sold_cost"]) - int(est["fee"])
 		r["stops"].append(est)
 	r["home_cargo"] = _lots_only(onboard)
 
@@ -395,6 +409,155 @@ static func plan_route(state: Dictionary, vehicle_id: String, route_in: Dictiona
 	r["sales_profit"] = int(r["sales"]) - sold_cost_total
 	r["profit"] = int(r["sales_profit"]) - int(r["fees"])
 	return r
+
+
+## What would be taken on for a sale from one point of a route (DESIGN 2c-G): `after` is the stop where the good
+## is bought, or -1 for loading it at home. {error, here, lots, cost, unit_cost}
+##   lots / cost — the amount already set there, or else as much as fits; and what it costs
+##                 (purchase price with price impact at a stop, cost basis at home)
+##   unit_cost   — one lot: the first lot's price at a stop, the average cost at home
+static func sale_load(state: Dictionary, vehicle_id: String, route_in: Dictionary, after: int, good: String) -> Dictionary:
+	var route := normalize_route(route_in)
+	var out := {"error": "", "here": "", "lots": 0, "cost": 0, "unit_cost": 0}
+	var v := vehicle(state, vehicle_id)
+	var stops: Array = route["stops"]
+	if v.is_empty():
+		out["error"] = "Choose a vehicle."
+		return out
+	if after < -1 or after >= stops.size():
+		out["error"] = "There is no such stop."
+		return out
+	var home_id: String = state["home_id"]
+	var home: Dictionary = Economy.home(state)
+	var cap := int(v["capacity"])
+	var here: String = home_id if after < 0 else String(stops[after]["city"])
+	if not state["cities"].has(here):
+		out["error"] = "Choose a city for this stop first."
+		return out
+	out["here"] = here
+	var lots := 0
+	var cost := 0
+	if after < 0:
+		var others := 0
+		for g in route["load"]:
+			if g != good:
+				others += int(route["load"][g])
+		var room := maxi(0, cap - others)
+		var current := int(route["load"].get(good, 0))
+		lots = mini(current if current > 0 else room, mini(room, Economy.available_for_load(home, good)))
+		cost = Economy.cost_of(home["warehouse"], good, lots)
+		out["unit_cost"] = Economy.avg_cost(home["warehouse"], good)
+	else:
+		if not Market.city_sells(state, here, good):
+			out["error"] = "%s doesn't sell %s." % [state["cities"][here]["name"], good]
+			return out
+		var plan := plan_route(state, vehicle_id, route)
+		var est: Dictionary = plan["stops"][after] if after < plan["stops"].size() else {}
+		var aboard := 0
+		for g in est.get("onboard_after", {}):
+			aboard += int(est["onboard_after"][g])
+		for b in est.get("buys", []):
+			if b["good"] == good:
+				aboard -= int(b["lots"])
+		var room := maxi(0, cap - aboard)
+		var current := int(stops[after]["buy"].get(good, {}).get("lots", 0))
+		lots = mini(current if current > 0 else room, room)
+		cost = Economy.sum(Market.buy_lot_prices(state, here, good, lots))
+		out["unit_cost"] = int(Market.buy_lot_prices(state, here, good, 1)[0])
+	out["lots"] = lots
+	out["cost"] = cost
+	return out
+
+
+## Where a good taken on at one point of a route could be sold next (DESIGN 2c-G). Each option is the whole route
+## planned again with the sale added (add_sale), so its numbers match what the planner shows once it's added.
+## Best first: the route's profit per day of travel with the sale added (by the price per lot when there is no room).
+## sale_load's fields plus {now_profit, now_days, unreachable, options: [{city, band, price, margin, revenue, gain,
+##  route_profit, route_days, per_day, days_from, extra_days, extra_fee, merge}]}
+##   margin      — first lot: what the city pays less unit_cost
+##   revenue     — what the lots fetch there
+##   gain        — how much the route's profit changes; extra_days / extra_fee — how much its days and fees change
+##   per_day     — route_profit / route_days
+##   merge       — the city already is the next stop, so the sale joins it instead of adding a stop
+##   unreachable — cities this vehicle can't get to from here (not listed)
+static func sale_options(state: Dictionary, vehicle_id: String, route_in: Dictionary, after: int, good: String) -> Dictionary:
+	var out := sale_load(state, vehicle_id, route_in, after, good)
+	out["unreachable"] = 0
+	out["options"] = []
+	if String(out["error"]) != "":
+		return out
+	var here: String = out["here"]
+	var home_id: String = state["home_id"]
+	var vtype: String = vehicle(state, vehicle_id)["type"]
+	var lots := int(out["lots"])
+	var stops: Array = normalize_route(route_in)["stops"]
+	var next: String = String(stops[after + 1]["city"]) if after + 1 < stops.size() else home_id
+	var base := plan_route(state, vehicle_id, route_in)
+	out["now_profit"] = int(base["profit"])
+	out["now_days"] = int(base["days"])
+	var options: Array = []
+	for id in state["city_order"]:
+		if id == here or id == home_id:
+			continue
+		var d1 := int(path_for(state, here, id, vtype)["days"])
+		var p2 := plan_route(state, vehicle_id, add_sale(route_in, after, good, id, lots)) if d1 > 0 else {}
+		if d1 <= 0 or p2["legs"].size() != p2["stops"].size() + 1:
+			out["unreachable"] = int(out["unreachable"]) + 1
+			continue
+		var revenue := 0
+		for x in p2["stops"][after + 1]["sells"]:
+			if x["good"] == good:
+				revenue = int(x["revenue"])
+		var price := int(Market.sell_lot_prices(state, id, good, 1)[0])
+		options.append({
+			"city": id, "band": state["cities"][id]["market"][good]["band"], "price": price,
+			"margin": price - int(out["unit_cost"]), "revenue": revenue,
+			"gain": int(p2["profit"]) - int(base["profit"]), "route_profit": int(p2["profit"]),
+			"route_days": int(p2["days"]), "per_day": int(p2["profit"]) / maxi(1, int(p2["days"])),
+			"days_from": d1, "extra_days": int(p2["days"]) - int(base["days"]),
+			"extra_fee": int(p2["fees"]) - int(base["fees"]), "merge": id == next,
+		})
+	var key := "per_day" if lots > 0 else "margin"
+	options.sort_custom(func(a, b):
+		return int(a[key]) > int(b[key]) or (int(a[key]) == int(b[key]) and String(a["city"]) < String(b["city"])))
+	out["options"] = options
+	return out
+
+
+## Adds "sell `good` at `city`" as the next stop after `after` (-1 = home), taking on `lots` there: loaded at home,
+## or bought at the stop (keeping its price limit). When the next stop already is `city`, it sells there instead of
+## adding a stop. A new stop sells all of the good on board, so the stop after it can have none left: its order to
+## sell that good is dropped. Returns a changed copy of the route; keys this doesn't know (editor flags) are kept.
+static func add_sale(route_in: Dictionary, after: int, good: String, city: String, lots: int) -> Dictionary:
+	var route: Dictionary = route_in.duplicate(true)
+	if not route.has("load"):
+		route["load"] = {}
+	if not route.has("stops"):
+		route["stops"] = []
+	var stops: Array = route["stops"]
+	if after < -1 or after >= stops.size():
+		return route
+	if lots > 0:
+		if after < 0:
+			route["load"][good] = lots
+		else:
+			var st: Dictionary = stops[after]
+			if not st.has("buy"):
+				st["buy"] = {}
+			var e: Dictionary = st["buy"].get(good, {})
+			st["buy"][good] = {"lots": lots, "max": int(e.get("max", 0))}
+	var nxt := after + 1
+	if nxt < stops.size() and String(stops[nxt]["city"]) == city:
+		var st: Dictionary = stops[nxt]
+		if not st.has("sell"):
+			st["sell"] = {}
+		var e: Dictionary = st["sell"].get(good, {})
+		st["sell"][good] = {"lots": -1, "min": int(e.get("min", 0))}
+	else:
+		stops.insert(nxt, {"city": city, "sell_all": false, "sell": {good: {"lots": -1, "min": 0}}, "buy": {}})
+		if nxt + 1 < stops.size() and stops[nxt + 1].has("sell"):
+			stops[nxt + 1]["sell"].erase(good)
+	return route
 
 
 ## Sends a vehicle on a route. Returns the plan; check plan["errors"].

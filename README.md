@@ -34,6 +34,9 @@ setting up trade routes and competing with NPC traders across a procedurally gen
    a standing trade route; *Stop after this loop* ends it. **Market ▸** on a stop shows what that city wants and its
    prices for every good. Price limits are optional (0 = none). **Keep** in the warehouse reserves lots that routes
    will never take.
+   Each stop shows its **net** (green = makes money, red = loses it): sales less what the goods cost, less the fee
+   to get there. **Click a good** a stop sells (or one you load at home) to see where else it sells, ranked by what
+   the whole route would make per day, and add that sale as the next stop with one click.
 6. **Watch your money.** The **Finances** tab shows running costs, fees already committed, how long your money
    lasts, and this and last month's books.
 
